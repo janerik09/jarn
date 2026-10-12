@@ -1,0 +1,10 @@
+# Secret scanning rules for this repository. The default rules are extended, not replaced.
+title = "JARN gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "RFC 6238 published TOTP test vector, not a credential"
+paths = ['''backend/tests/test_totp_and_passwords\.py''']
+regexes = ['''GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ''']

@@ -1,0 +1,123 @@
+.pagination-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-top: 1px solid rgba(34, 42, 53, 0.15);
+}
+
+.pagination-info {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  width: 100%;
+  justify-content: space-between;
+  color: #d5dbe3;
+  font-size: 0.85em;
+}
+
+.item-count {
+  font-size: 0.85em;
+  color: #4a8fd4;
+  font-weight: 500;
+}
+
+.page-size-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-size-select label {
+  color: #d5dbe3;
+  font-size: 0.85em;
+}
+
+.page-size-select select {
+  padding: 5px 8px;
+  background: rgba(15, 19, 25, 0.8) !important;
+  border: 1px solid rgba(34, 42, 53, 0.2);
+  color: #d5dbe3 !important;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85em;
+}
+
+.page-size-select select option {
+  background: rgba(15, 19, 25, 0.9);
+  color: #d5dbe3;
+}
+
+.page-size-select select:hover {
+  border-color: #222a35;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.page-btn,
+.page-number {
+  padding: 5px 10px;
+  background: rgba(74, 143, 212, 0.08);
+  border: 1px solid rgba(34, 42, 53, 0.2);
+  color: #4a8fd4;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 0.8em;
+  transition: all 0.2s ease;
+  font-family: 'Courier New', monospace;
+}
+
+.page-btn:hover:not(:disabled),
+.page-number:hover:not(:disabled) {
+  background: rgba(74, 143, 212, 0.15);
+  border-color: #222a35;
+  box-shadow: 0 0 6px rgba(74, 143, 212, 0.15);
+}
+
+.page-btn:disabled,
+.page-number:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.page-number.active {
+  background: #2f6aa8;
+  color: #ffffff;
+  font-weight: bold;
+  border-color: #222a35;
+}
+
+.page-number.ellipsis {
+  cursor: default;
+  background: transparent;
+  border: none;
+  color: #8b95a5;
+}
+
+.page-number.ellipsis:hover {
+  background: transparent;
+  box-shadow: none;
+  border: none;
+}
+
+@media (max-width: 768px) {
+  .pagination-info {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .pagination-controls {
+    width: 100%;
+    overflow-x: auto;
+    padding: 8px 0;
+  }
+}

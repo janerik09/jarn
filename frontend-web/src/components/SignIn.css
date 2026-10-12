@@ -1,0 +1,90 @@
+.signin-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  padding: 24px 16px;
+  background: #000000;
+}
+
+/* Brand band across the top of the sign-in page */
+.signin-brand {
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  justify-content: center;
+  padding: 28px 0 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.signin-brand .logo-large {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.signin-brand .logo-large .logo-icon {
+  width: 88px;
+  height: 88px;
+}
+
+.signin-brand .logo-large .logo-text {
+  font-size: 3.6em;
+  line-height: 1;
+}
+
+.signin-brand .logo-large .logo-tagline {
+  font-size: 0.9em;
+  margin-top: 6px;
+}
+
+.signin-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: var(--shadow-card);
+}
+
+.signin-card h1 {
+  font-size: 1.3em;
+  margin-bottom: 4px;
+}
+
+.signin-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 0.85em;
+}
+
+.signin-card input {
+  padding: 8px 10px;
+  font-size: 1em;
+}
+
+.signin-help {
+  color: var(--text-secondary);
+  font-size: 0.85em;
+}
+
+.signin-error {
+  color: var(--error);
+  font-size: 0.85em;
+}
+
+.signin-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}

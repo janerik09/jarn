@@ -1,0 +1,46 @@
+# Alerts for JÁRN. The same conditions are also sent from the app itself to the webhook and email
+# (see Admin Settings > Notifications), so these rules are for teams that already run Prometheus.
+groups:
+  - name: jarn
+    rules:
+      - alert: JARNDown
+        expr: up{job="jarn"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: "JÁRN metrics endpoint is not reachable"}
+
+      - alert: JARNWorkerDown
+        expr: jarn_worker_up == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: "No patch worker is responding; jobs and scheduled runs will not start"}
+
+      - alert: JARNBackupStale
+        expr: jarn_backup_age_seconds > 36 * 3600
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "The newest database backup is older than 36 hours"}
+
+      - alert: JARNRestoreCheckStale
+        expr: jarn_restore_check_age_seconds > 14 * 86400
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "No passing backup restore check in 14 days"}
+
+      - alert: JARNComplianceStale
+        expr: jarn_compliance_age_seconds > 36 * 3600
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "No compliance assessment has completed in 36 hours"}
+
+      - alert: JARNCertificateExpiring
+        expr: jarn_tls_certificate_days_left < 30
+        for: 1h
+        labels: {severity: warning}
+        annotations: {summary: "The web certificate expires in less than 30 days"}
+
+      - alert: JARNPlatformAlertActive
+        expr: sum(jarn_alert_active) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations: {summary: "A JÁRN platform check is failing; see the app's alerts or /metrics for details"}

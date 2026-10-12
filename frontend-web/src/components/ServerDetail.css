@@ -1,0 +1,273 @@
+.server-detail {
+  padding: 24px;
+  color: #d5dbe3;
+}
+
+.sd-loading {
+  color: #8b95a5;
+  padding: 40px;
+}
+
+.sd-error {
+  background: rgba(200, 81, 76, 0.15);
+  color: #c8514c;
+  padding: 10px 14px;
+  border-radius: 4px;
+  margin: 12px 0;
+}
+
+.sd-message {
+  color: #3a9d6e;
+  margin: 8px 0;
+}
+
+.sd-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.sd-title {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.sd-title h1 {
+  color: #4a8fd4;
+  margin: 0;
+  font-size: 1.6em;
+}
+
+.sd-meta {
+  color: #8b95a5;
+  font-size: 0.9em;
+}
+
+.sd-status {
+  padding: 2px 10px;
+  border-radius: 3px;
+  font-size: 0.8em;
+  background: rgba(22, 27, 34, 0.3);
+}
+
+.sd-status.healthy {
+  background: rgba(58, 157, 110, 0.2);
+  color: #3a9d6e;
+}
+
+.sd-status.unreachable {
+  background: rgba(200, 81, 76, 0.2);
+  color: #c8514c;
+}
+
+.sd-back,
+.server-detail button {
+  background: rgba(15, 19, 25, 0.8);
+  border: 1px solid rgba(34, 42, 53, 0.3);
+  color: #d5dbe3;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.sd-card {
+  background: rgba(15, 19, 25, 0.6);
+  border: 1px solid rgba(34, 42, 53, 0.2);
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.sd-card h3 {
+  color: #4a8fd4;
+  margin: 0 0 10px;
+  font-size: 1em;
+}
+
+.sd-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.sd-field label {
+  color: #8b95a5;
+  font-size: 0.8em;
+  text-transform: uppercase;
+}
+
+.sd-field textarea,
+.sd-tag-input {
+  background: rgba(15, 19, 25, 0.8);
+  border: 1px solid rgba(34, 42, 53, 0.3);
+  color: #fff;
+  border-radius: 4px;
+  padding: 8px;
+  font-family: inherit;
+}
+
+.sd-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.sd-tag {
+  background: rgba(74, 143, 212, 0.15);
+  border: 1px solid rgba(34, 42, 53, 0.4);
+  color: #4a8fd4;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.85em;
+}
+
+.sd-tag button {
+  background: none;
+  border: none;
+  color: #4a8fd4;
+  padding: 0 0 0 4px;
+  cursor: pointer;
+}
+
+.sd-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sd-save {
+  background: #2f6aa8 !important; color: #ffffff;
+  border: none !important;
+  font-weight: 600;
+}
+
+.sd-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.sd-tabs button.active {
+  border-color: #222a35;
+  color: #4a8fd4;
+}
+
+.sd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.sd-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(34, 42, 53, 0.1);
+  font-size: 0.9em;
+}
+
+.sd-label {
+  color: #8b95a5;
+}
+
+.sd-value {
+  color: #d5dbe3;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.sd-app-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sd-app-head h3 {
+  margin: 0;
+}
+
+.sd-badge {
+  font-size: 0.75em;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: rgba(22, 27, 34, 0.3);
+}
+
+.sd-badge.good {
+  background: rgba(58, 157, 110, 0.2);
+  color: #3a9d6e;
+}
+
+.sd-badge.bad {
+  background: rgba(200, 81, 76, 0.2);
+  color: #c8514c;
+}
+
+.sd-checks,
+.sd-plain {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+}
+
+.sd-checks li {
+  display: flex;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 0.85em;
+}
+
+.sd-checks li.ok span { color: #3a9d6e; }
+.sd-checks li.bad span { color: #c8514c; }
+
+.sd-checks code,
+.sd-plain code {
+  overflow-wrap: anywhere;
+  color: #d5dbe3;
+}
+
+.sd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+
+.sd-table th,
+.sd-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(34, 42, 53, 0.15);
+  vertical-align: top;
+}
+
+.sd-table th {
+  color: #4a8fd4;
+}
+
+.sd-err-small {
+  color: #c8514c;
+  font-size: 0.85em;
+}
+
+.sd-empty {
+  color: #8b95a5;
+  font-size: 0.9em;
+}
+
+.hostname-link {
+  background: none !important;
+  border: none !important;
+  color: #4a8fd4 !important;
+  text-decoration: underline;
+  padding: 0 !important;
+  cursor: pointer;
+}
