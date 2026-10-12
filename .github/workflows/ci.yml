@@ -23,6 +23,12 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U patching_user -d patching_db"
           --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgresql://patching_user:ci-only-password@localhost:5432/patching_db
       REDIS_URL: redis://localhost:6379/0
