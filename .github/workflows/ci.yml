@@ -99,13 +99,13 @@ jobs:
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest
+    # Read-only on purpose. Dependabot pull requests get a read-only token that the workflow cannot widen, so the
+    # scan runs the gitleaks command over the checked-out history and does not call the GitHub API.
     permissions:
       contents: read
-      pull-requests: read  # the scanner lists the commits of a pull request
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Scan the full git history
+        run: docker run --rm -v "$GITHUB_WORKSPACE:/repo" zricethezav/gitleaks:v8.24.3 git /repo --config /repo/.gitleaks.toml --redact --exit-code 1 --no-banner
