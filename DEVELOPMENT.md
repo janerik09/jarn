@@ -44,11 +44,8 @@ docker exec -w /app patching-backend python -m pytest -q
 ```
 
 Test tools are not in the production image. The development overlay builds the backend with them (`INSTALL_DEV=1`).
-On a production container, install them once for a test run:
-
-```bash
-docker exec patching-backend pip install -r /app/requirements-dev.txt
-```
+The production image has no `pip` at run time, so test tools cannot be added to a running production container. Run the
+tests from the development overlay, which builds with them installed.
 
 Dependencies are pinned in `backend/requirements.txt` and `frontend-web/package-lock.json`. The frontend installs with
 `npm ci`, so it uses exactly the locked versions.
