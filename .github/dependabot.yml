@@ -1,27 +1,48 @@
-# Opens weekly pull requests when a dependency or base image has an update
+# Weekly update pull requests. Minor and patch updates are grouped per ecosystem, so one pull request covers them.
+# Major versions arrive as separate pull requests and should be reviewed before merging.
 version: 2
 updates:
   - package-ecosystem: pip
     directory: /backend
     schedule:
       interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
   - package-ecosystem: npm
     directory: /frontend-web
     schedule:
       interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
   - package-ecosystem: docker
     directory: /backend
     schedule:
       interval: weekly
+    open-pull-requests-limit: 2
+
   - package-ecosystem: docker
     directory: /frontend-web
     schedule:
       interval: weekly
+    open-pull-requests-limit: 2
+
   - package-ecosystem: docker
     directory: /deploy/nginx
     schedule:
       interval: weekly
+    open-pull-requests-limit: 2
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
