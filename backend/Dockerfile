@@ -9,14 +9,14 @@ RUN apt-get update && apt-get install -y \
     openssl \
     && rm -rf /var/lib/apt/lists/*
 
-# setuptools vendors wheel and jaraco.context in the base image; upgrading it replaces the vulnerable copies
-RUN pip install --no-cache-dir --upgrade "setuptools>=84.0.0"
-
 COPY requirements.txt requirements-dev.txt ./
 # Test tools are only installed for the development overlay (INSTALL_DEV=1)
 ARG INSTALL_DEV=0
 RUN pip install --no-cache-dir -r requirements.txt \
     && if [ "$INSTALL_DEV" = "1" ]; then pip install --no-cache-dir -r requirements-dev.txt; fi
+# The app does not need the packaging tools at run time. They bundle their own copies of urllib3 and msgpack, which
+# lag behind security fixes, so they are removed from the final image. Test tools must be installed at build time.
+RUN pip uninstall -y pip setuptools wheel 2>/dev/null; python -c "import uvicorn, celery, sqlalchemy, paramiko, jwt, ldap3; print('runtime imports ok')"
 
 COPY . .
 
