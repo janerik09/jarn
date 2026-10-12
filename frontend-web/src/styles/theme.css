@@ -1,0 +1,380 @@
+/*
+ * JÁRN visual theme
+ * Black surfaces, white and blue type. Status colours are muted: green for success and healthy,
+ * amber for warnings, red for errors. Loaded after the component stylesheets, so it sets
+ * colour, border, radius and shadow only and leaves layout alone.
+ */
+
+:root {
+  --bg-primary: #000000;
+  --bg-secondary: #0a0c10;
+  --bg-tertiary: #0f1217;
+  --bg-raised: #13171e;
+  --bg-input: #0b0e13;
+
+  --text-primary: #e6eaf0;
+  --text-heading: #ffffff;
+  --text-secondary: #8b95a5;
+  --text-muted: #5d6676;
+
+  --brand-color: #4a8fd4;
+  --brand-dark: #2c64a3;
+  --accent: #4a8fd4;
+  --accent-strong: #2f6aa8;
+  --accent-soft: rgba(74, 143, 212, 0.12);
+
+  --success: #3a9d6e;
+  --warning: #d4a132;
+  --error: #c8514c;
+
+  --border-color: #1c222b;
+  --border-bright: #2a3340;
+  --radius: 6px;
+  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.025), 0 8px 20px rgba(0, 0, 0, 0.55);
+}
+
+html,
+body {
+  background: #000000;
+  color: var(--text-primary);
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
+}
+
+/* Headings */
+h1,
+.page-header h1 {
+  color: var(--text-heading);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+h2,
+h3,
+h4 {
+  color: var(--text-heading);
+  font-weight: 600;
+  letter-spacing: 0.005em;
+}
+
+.page-header {
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* Section labels inside cards and panels */
+.section-title,
+.chart-container h3,
+.sd-card h3,
+.generator-card h3,
+.detail-section h4,
+.filter-panel h3 {
+  color: var(--text-secondary);
+  font-size: 0.78em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* Cards and panels */
+.stat-card,
+.kpi-card,
+.summary-card,
+.score-card,
+.risk-card,
+.risk-summary-card,
+.health-score-card,
+.compliance-card,
+.server-card,
+.job-card,
+.patch-group-card,
+.schedule-card,
+.action-card,
+.generator-card,
+.attestation-card,
+.sd-card,
+.chart-container,
+.settings-card,
+.analysis-card,
+.filter-panel,
+.stat-item,
+.server-stats-bar,
+.progress-overview,
+.deployment-phases,
+.servers-grid-section,
+.audit-section,
+.executive-summary,
+.compliance-scores-section,
+.wizard-step,
+.review-summary,
+.schedule-form,
+.card,
+.panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+
+.kpi-card:hover,
+.action-card:hover,
+.server-card:hover,
+.risk-card:hover,
+.score-card:hover,
+.summary-card:hover,
+.schedule-card:hover,
+.patch-group-card:hover,
+.stat-card:hover {
+  border-color: var(--border-bright);
+}
+
+/* Buttons: primary is solid blue, secondary is outlined, status buttons keep their meaning */
+button {
+  font-family: inherit;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+}
+
+.btn-submit,
+.btn-save,
+.btn-save-settings,
+.btn-create,
+.btn-add,
+.btn-add-server,
+.btn-create-group,
+.btn-generate,
+.btn-deploy,
+.btn-schedule,
+.btn-start,
+.btn-test,
+.sd-save,
+.scan-btn,
+.btn-primary {
+  background: var(--accent-strong);
+  border: 1px solid #3a78bd;
+  color: #ffffff;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.btn-submit:hover:not(:disabled),
+.btn-save:hover:not(:disabled),
+.btn-save-settings:hover:not(:disabled),
+.btn-create:hover:not(:disabled),
+.btn-add:hover,
+.btn-add-server:hover,
+.btn-create-group:hover,
+.btn-generate:hover:not(:disabled),
+.btn-deploy:hover:not(:disabled),
+.btn-schedule:hover:not(:disabled),
+.btn-start:hover,
+.btn-test:hover:not(:disabled),
+.sd-save:hover,
+.scan-btn:hover:not(:disabled),
+.btn-primary:hover {
+  background: #3a78bd;
+  border-color: #4a8fd4;
+}
+
+.btn-approve,
+.btn-schedule-upgrade,
+.btn-approve:hover,
+.btn-schedule-upgrade:hover:not(:disabled) {
+  background: #2b7152;
+  border: 1px solid #368a64;
+  color: #ffffff;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.btn-delete,
+.delete-btn,
+.action-btn.delete-btn {
+  background: transparent;
+  border: 1px solid rgba(200, 81, 76, 0.5);
+  color: var(--error);
+  border-radius: 4px;
+}
+
+.btn-delete:hover,
+.action-btn.delete-btn:hover {
+  background: rgba(200, 81, 76, 0.12);
+  border-color: var(--error);
+}
+
+.btn-cancel,
+.btn-select-all,
+.btn-deselect-all,
+.btn-edit,
+.btn-print,
+.btn-defer,
+.btn-secondary,
+.back-btn,
+.back-button,
+.sd-back,
+.expand-btn,
+.filter-btn,
+.page-btn,
+.page-number {
+  background: var(--bg-raised);
+  border: 1px solid var(--border-bright);
+  color: var(--text-primary);
+  border-radius: 4px;
+}
+
+.btn-cancel:hover,
+.btn-select-all:hover,
+.btn-deselect-all:hover,
+.btn-edit:hover,
+.btn-print:hover,
+.btn-defer:hover,
+.btn-secondary:hover,
+.back-btn:hover,
+.back-button:hover,
+.sd-back:hover,
+.filter-btn:hover,
+.page-btn:hover:not(:disabled),
+.page-number:hover:not(:disabled) {
+  border-color: #3a4656;
+  color: #ffffff;
+}
+
+.filter-btn.active,
+.page-number.active,
+.format-btn.active,
+.sd-tabs button.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Inputs */
+input,
+select,
+textarea {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border-bright);
+  border-radius: 4px;
+  font-family: inherit;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(74, 143, 212, 0.18);
+}
+
+option {
+  background: #0b0e13;
+  color: var(--text-primary);
+}
+
+::placeholder {
+  color: var(--text-muted);
+}
+
+/* Tables */
+table {
+  border-collapse: collapse;
+}
+
+th {
+  color: var(--text-secondary);
+  font-size: 0.72em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid var(--border-bright);
+}
+
+td {
+  border-bottom: 1px solid #141920;
+}
+
+tbody tr:hover {
+  background: #0d1014;
+}
+
+/* Badges and status pills */
+.status-badge,
+.sd-badge,
+.os-badge,
+.patch-badge,
+.health-badge,
+.approval-badge,
+.connection-badge,
+.score-badge,
+.compliance-score {
+  border-radius: 3px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Progress bars */
+.bar-track,
+.progress-bar-container,
+.metric-bar,
+.score-bar {
+  background: #161b22;
+  border-radius: 3px;
+}
+
+/* Charts (Recharts) */
+.recharts-cartesian-grid line,
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: #1c222b;
+}
+
+.recharts-text,
+.recharts-label,
+.recharts-cartesian-axis-tick-value {
+  fill: var(--text-secondary);
+}
+
+.recharts-default-tooltip {
+  background: #0b0e13 !important;
+  border: 1px solid var(--border-bright) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+}
+
+.recharts-tooltip-label,
+.recharts-tooltip-item {
+  color: var(--text-primary) !important;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #232b36;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #2f3a48;
+}
+
+/* Blue-tinted buttons: lighter text so labels stay readable on the dark surface */
+.btn-generate,
+.btn-print,
+.btn-start,
+.btn-select-all,
+.btn-deselect-all,
+.format-btn.active,
+.filter-btn.active,
+.action-btn,
+.expand-btn,
+.close-btn {
+  color: #a8d1f2;
+}
