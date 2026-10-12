@@ -7,6 +7,7 @@ compliance against common frameworks, and keeps a tamper-evident audit trail of 
 Start with [GETTING_STARTED.md](GETTING_STARTED.md) for installation and the first sign-in. The other guides:
 
 - [RECOVERY.md](RECOVERY.md): restoring after a loss, keys, and the restore drill
+- [SSO.md](SSO.md): signing in with Entra ID, Okta, Google, Keycloak, or Active Directory / LDAP
 
 - [NETWORK_ACCESS.md](NETWORK_ACCESS.md): ports, HTTP and HTTPS, firewalls, and what is reachable from where
 - [DEVELOPMENT.md](DEVELOPMENT.md): running the development overlay, tests, and database migrations

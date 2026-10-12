@@ -1,6 +1,8 @@
 import { useEffect, useState, ReactNode } from 'react'
+import './SsoSettings.css'
 import './AdminSettings.css'
 import { setCachedDefaultPageSize } from '../lib/defaultPageSize'
+import { getUser } from '../lib/auth'
 import { BackupMappings } from './BackupMappings'
 import { listTimezones, setDisplayTimezone } from '../lib/displayTime'
 
@@ -132,6 +134,12 @@ const SECTIONS: SectionDef[] = [
     title: 'Backup',
     description: 'Back up servers before patching and restore them if a patch cannot be rolled back. Proxmox VE with a Proxmox Backup Server storage is supported.',
     render: (s, update) => <BackupSection settings={s} update={update} />,
+  },
+  {
+    id: 'sso',
+    title: 'Single sign-on',
+    description: 'Sign in with Microsoft Entra ID, Okta, Google, Keycloak or another OpenID Connect provider, or with Active Directory / LDAP. Roles come from the groups each user belongs to.',
+    render: () => <SsoSection />,
   },
   {
     id: 'hostkeys',
@@ -648,6 +656,443 @@ function NotificationsSection() {
   )
 }
 
+interface SsoProviderForm {
+  id: string
+  name: string
+  preset: string
+  enabled: boolean
+  issuer: string
+  client_id: string
+  client_secret: string
+  client_secret_set: boolean
+  scopes: string
+  username_claim: string
+  groups_claim: string
+  role_map: Record<string, string>
+  default_role: string
+  allowed_emails: string
+}
+
+interface SsoLdapForm {
+  enabled: boolean
+  host: string
+  port: number
+  use_ssl: boolean
+  starttls: boolean
+  verify_tls: boolean
+  bind_dn: string
+  bind_password: string
+  bind_password_set: boolean
+  base_dn: string
+  user_filter: string
+  username_attribute: string
+  email_attribute: string
+  group_attribute: string
+  group_base_dn: string
+  role_map: Record<string, string>
+  default_role: string
+}
+
+
+const ROLE_OPTIONS = ['', 'admin', 'operator', 'viewer']
+
+interface SsoProviderForm {
+  id: string
+  name: string
+  preset: string
+  enabled: boolean
+  issuer: string
+  client_id: string
+  client_secret: string
+  client_secret_set: boolean
+  scopes: string
+  username_claim: string
+  groups_claim: string
+  role_map: Record<string, string>
+  default_role: string
+  allowed_emails: string
+}
+
+interface SsoLdapForm {
+  enabled: boolean
+  host: string
+  port: number
+  use_ssl: boolean
+  starttls: boolean
+  verify_tls: boolean
+  bind_dn: string
+  bind_password: string
+  bind_password_set: boolean
+  base_dn: string
+  user_filter: string
+  username_attribute: string
+  email_attribute: string
+  group_attribute: string
+  group_base_dn: string
+  role_map: Record<string, string>
+  default_role: string
+}
+
+interface SsoPreset { name: string; issuer_hint: string; username_claim: string; groups_claim: string; help: string }
+
+// Group names to role. Rows are kept as a list so that editing a name never drops the row.
+function RoleMapEditor({ value, onChange, placeholder }: { value: Record<string, string>; onChange: (v: Record<string, string>) => void; placeholder: string }) {
+  const [rows, setRows] = useState<{ group: string; role: string }[]>(() => Object.entries(value).map(([group, role]) => ({ group, role })))
+  const commit = (next: { group: string; role: string }[]) => {
+    setRows(next)
+    onChange(Object.fromEntries(next.filter(r => r.group.trim()).map(r => [r.group.trim(), r.role])))
+  }
+  return (
+    <div className="sso-rolemap">
+      {rows.map((row, i) => (
+        <div className="sso-rolemap-row" key={i}>
+          <input type="text" value={row.group} placeholder={placeholder}
+            onChange={e => commit(rows.map((r, j) => (j === i ? { ...r, group: e.target.value } : r)))} />
+          <select value={row.role} onChange={e => commit(rows.map((r, j) => (j === i ? { ...r, role: e.target.value } : r)))}>
+            {['admin', 'operator', 'viewer'].map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+          <button className="btn-cancel" onClick={() => commit(rows.filter((_, j) => j !== i))}>Remove</button>
+        </div>
+      ))}
+      <div><button className="btn-edit" onClick={() => setRows([...rows, { group: '', role: 'viewer' }])}>Add group</button></div>
+    </div>
+  )
+}
+
+function SsoSection() {
+  const [tab, setTab] = useState<'general' | 'oidc' | 'ldap'>('general')
+  const [loaded, setLoaded] = useState(false)
+  const [publicUrl, setPublicUrl] = useState('')
+  const [redirectUri, setRedirectUri] = useState<string | null>(null)
+  const [allowLocal, setAllowLocal] = useState(true)
+  const [breakGlass, setBreakGlass] = useState('')
+  const [presets, setPresets] = useState<Record<string, SsoPreset>>({})
+  const [providers, setProviders] = useState<SsoProviderForm[]>([])
+  const [openProvider, setOpenProvider] = useState<number | null>(null)
+  const [ldap, setLdap] = useState<SsoLdapForm | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null)
+  const [ldapTestUser, setLdapTestUser] = useState('')
+  const [ldapTestResult, setLdapTestResult] = useState<string | null>(null)
+
+  const toForm = (p: any): SsoProviderForm => ({
+    id: p.id, name: p.name || p.id, preset: p.preset || 'oidc', enabled: !!p.enabled, issuer: p.issuer || '',
+    client_id: p.client_id || '', client_secret: '', client_secret_set: !!p.client_secret_set,
+    scopes: p.scopes || 'openid profile email', username_claim: p.username_claim || 'preferred_username',
+    groups_claim: p.groups_claim ?? 'groups', role_map: p.role_map || {}, default_role: p.default_role || '',
+    allowed_emails: (p.allowed_emails || []).join(', '),
+  })
+
+  const load = async () => {
+    try {
+      const res = await fetch('/api/v1/admin/sso')
+      if (!res.ok) throw new Error()
+      const d = await res.json()
+      setPublicUrl(d.public_base_url || '')
+      setRedirectUri(d.redirect_uri)
+      setAllowLocal(d.allow_local_login)
+      setBreakGlass((d.break_glass_usernames || []).join(', '))
+      setPresets(d.presets || {})
+      setProviders((d.providers || []).map(toForm))
+      setLdap({
+        enabled: !!d.ldap?.enabled, host: d.ldap?.host || '', port: d.ldap?.port || 636, use_ssl: d.ldap?.use_ssl ?? true,
+        starttls: !!d.ldap?.starttls, verify_tls: d.ldap?.verify_tls ?? true, bind_dn: d.ldap?.bind_dn || '',
+        bind_password: '', bind_password_set: !!d.ldap?.bind_password_set, base_dn: d.ldap?.base_dn || '',
+        user_filter: d.ldap?.user_filter || '(&(objectClass=person)(uid={username}))',
+        username_attribute: d.ldap?.username_attribute || 'uid', email_attribute: d.ldap?.email_attribute || 'mail',
+        group_attribute: d.ldap?.group_attribute ?? 'memberOf', group_base_dn: d.ldap?.group_base_dn || '',
+        role_map: d.ldap?.role_map || {}, default_role: d.ldap?.default_role || '',
+      })
+      setLoaded(true)
+    } catch {
+      setMessage({ ok: false, text: 'Could not load single sign-on settings' })
+    }
+  }
+
+  useEffect(() => { load() }, [])
+
+  const updateProvider = (index: number, patch: Partial<SsoProviderForm>) =>
+    setProviders(providers.map((p, i) => (i === index ? { ...p, ...patch } : p)))
+
+  const addProvider = (presetKey: string) => {
+    const preset = presets[presetKey]
+    const id = `${presetKey}-${providers.length + 1}`
+    setProviders([...providers, {
+      id, name: preset?.name || 'Sign-in', preset: presetKey, enabled: false, issuer: '', client_id: '',
+      client_secret: '', client_secret_set: false, scopes: 'openid profile email',
+      username_claim: preset?.username_claim || 'preferred_username', groups_claim: preset?.groups_claim ?? 'groups',
+      role_map: {}, default_role: '', allowed_emails: '',
+    }])
+    setOpenProvider(providers.length)
+  }
+
+  const save = async () => {
+    setBusy(true)
+    setMessage(null)
+    try {
+      const body = {
+        public_base_url: publicUrl,
+        allow_local_login: allowLocal,
+        break_glass_usernames: breakGlass.split(',').map(s => s.trim()).filter(Boolean),
+        providers: providers.map(p => ({
+          id: p.id, name: p.name, preset: p.preset, enabled: p.enabled, issuer: p.issuer, client_id: p.client_id,
+          client_secret: p.client_secret || null, scopes: p.scopes, username_claim: p.username_claim,
+          groups_claim: p.groups_claim, role_map: p.role_map, default_role: p.default_role || null,
+          allowed_emails: p.allowed_emails.split(',').map(s => s.trim()).filter(Boolean),
+        })),
+        ldap: ldap && { ...ldap, bind_password: ldap.bind_password || null, default_role: ldap.default_role || null },
+      }
+      const res = await fetch('/api/v1/admin/sso', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      const data = await res.json()
+      if (!res.ok) { setMessage({ ok: false, text: typeof data.detail === 'string' ? data.detail : 'Could not save' }); return }
+      setMessage({ ok: true, text: 'Saved. Sign-in options update immediately.' })
+      await load()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const removeProvider = (i: number) => {
+    if (!window.confirm(`Remove ${providers[i].name}? Users who signed in with it keep their accounts, but cannot sign in with it again.`)) return
+    setProviders(providers.filter((_, j) => j !== i))
+    setOpenProvider(null)
+  }
+
+  const testProvider = async (p: SsoProviderForm) => {
+    setMessage(null)
+    const res = await fetch(`/api/v1/admin/sso/test-oidc/${encodeURIComponent(p.id)}`, { method: 'POST' })
+    const data = await res.json()
+    if (!res.ok) setMessage({ ok: false, text: `${p.name}: ${data.detail}` })
+    else setMessage({ ok: true, text: `${p.name}: found ${data.issuer} with ${data.signing_keys} signing key(s).` })
+  }
+
+  const testLdap = async () => {
+    setLdapTestResult(null)
+    const res = await fetch('/api/v1/admin/sso/test-ldap', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: ldapTestUser }),
+    })
+    const data = await res.json()
+    if (!res.ok) setLdapTestResult(data.detail || 'Test failed')
+    else if (!data.found) setLdapTestResult('No single matching entry for that user name.')
+    else setLdapTestResult(`Found. Groups: ${data.groups.length ? data.groups.length : 'none'}. Role on sign-in: ${data.role || 'none (sign-in refused)'}.`)
+  }
+
+  if (!loaded || !ldap) return <p className="settings-help">Loading single sign-on settings…</p>
+
+  const enabledCount = providers.filter(p => p.enabled).length
+  const tabs: { key: 'general' | 'oidc' | 'ldap'; label: string }[] = [
+    { key: 'general', label: 'Access' },
+    { key: 'oidc', label: `OpenID Connect (${providers.length})` },
+    { key: 'ldap', label: ldap.enabled ? 'Directory (on)' : 'Directory (off)' },
+  ]
+
+  return (
+    <div>
+      <div className="sso-header">
+        <p>{enabledCount} sign-in option(s) shown{ldap.enabled ? ', directory sign-in on' : ''}. Local sign-in is {allowLocal ? 'on' : 'off'}.</p>
+      </div>
+
+      <div className="sso-tabs" role="tablist">
+        {tabs.map(t => (
+          <button key={t.key} role="tab" aria-selected={tab === t.key}
+            className={`sso-tab ${tab === t.key ? 'active' : ''}`} onClick={() => setTab(t.key)}>{t.label}</button>
+        ))}
+      </div>
+
+      {tab === 'general' && (
+        <div className="sso-section">
+          <h4>Public address</h4>
+          <p>Providers send users back to this address, so it must be the address people type in their browser.</p>
+          <div className="sso-grid">
+            <div className="wide">
+              <label>Public address of JÁRN</label>
+              <input type="text" value={publicUrl} onChange={e => setPublicUrl(e.target.value)} placeholder="https://jarn.example.com" />
+              {redirectUri && <div className="sso-hint">Register this redirect address with each provider: <code>{redirectUri}</code></div>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'general' && (
+        <div className="sso-section">
+          <h4>Local sign-in</h4>
+          <p>Accounts that have a JÁRN password. Keep at least one such administrator, reachable when your provider is down.</p>
+          <div className="sso-toggles">
+            <label className="settings-toggle">
+              <input type="checkbox" checked={allowLocal} onChange={e => setAllowLocal(e.target.checked)} />
+              Allow password sign-in for local accounts
+            </label>
+          </div>
+          {!allowLocal && (
+            <div className="sso-grid">
+              <div className="wide">
+                <label>Break-glass accounts that can still use a password</label>
+                <input type="text" value={breakGlass} onChange={e => setBreakGlass(e.target.value)} placeholder="administrator" />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'oidc' && (
+        <>
+          {providers.length === 0 && (
+            <div className="sso-section">
+              <h4>No providers yet</h4>
+              <p>Choose the type of provider you use. Each one fills in the usual settings for you.</p>
+            </div>
+          )}
+          {providers.map((p, i) => {
+            const open = openProvider === i
+            return (
+              <div className="sso-card" key={i}>
+                <div className="sso-card-head">
+                  <span className="name">{p.name || p.id}</span>
+                  <span className={`sso-pill ${p.enabled ? 'on' : 'off'}`}>{p.enabled ? 'Shown on sign-in' : 'Hidden'}</span>
+                  <span className="issuer">{p.issuer || 'No issuer set'}</span>
+                  <span className="spacer" />
+                  <button className="btn-edit" onClick={() => setOpenProvider(open ? null : i)}>{open ? 'Close' : 'Edit'}</button>
+                </div>
+                {open && (
+                  <div className="sso-card-body">
+                    {presets[p.preset] && <div className="sso-note">{presets[p.preset].help}</div>}
+                    <div className="sso-toggles">
+                      <label className="settings-toggle">
+                        <input type="checkbox" checked={p.enabled} onChange={e => updateProvider(i, { enabled: e.target.checked })} />
+                        Show this option on the sign-in page
+                      </label>
+                    </div>
+                    <div className="sso-grid">
+                      <div><label>Display name</label><input type="text" value={p.name} onChange={e => updateProvider(i, { name: e.target.value })} /></div>
+                      <div><label>Id (used in the address)</label><input type="text" value={p.id} onChange={e => updateProvider(i, { id: e.target.value })} /></div>
+                      <div className="wide"><label>Issuer</label><input type="text" value={p.issuer} onChange={e => updateProvider(i, { issuer: e.target.value })} placeholder={presets[p.preset]?.issuer_hint} /></div>
+                      <div><label>Client id</label><input type="text" value={p.client_id} onChange={e => updateProvider(i, { client_id: e.target.value })} /></div>
+                      <div>
+                        <label>Client secret</label>
+                        <input type="password" value={p.client_secret} onChange={e => updateProvider(i, { client_secret: e.target.value })}
+                          placeholder={p.client_secret_set ? 'Saved, leave blank to keep' : 'Enter the secret'} />
+                      </div>
+                      <div><label>Username claim</label><input type="text" value={p.username_claim} onChange={e => updateProvider(i, { username_claim: e.target.value })} /></div>
+                      <div>
+                        <label>Groups claim</label>
+                        <input type="text" value={p.groups_claim} onChange={e => updateProvider(i, { groups_claim: e.target.value })} />
+                        <div className="sso-hint">Leave empty if the provider sends no groups.</div>
+                      </div>
+                      <div className="wide">
+                        <label>Group to role</label>
+                        <RoleMapEditor value={p.role_map} onChange={role_map => updateProvider(i, { role_map })} placeholder="Group name or id from the provider" />
+                      </div>
+                      <div>
+                        <label>Role for anyone who matches no group</label>
+                        <select value={p.default_role} onChange={e => updateProvider(i, { default_role: e.target.value })}>
+                          {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r || 'None: refuse sign-in'}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label>Allowed email addresses</label>
+                        <input type="text" value={p.allowed_emails} onChange={e => updateProvider(i, { allowed_emails: e.target.value })} placeholder="Comma separated, optional" />
+                      </div>
+                    </div>
+                    <div className="sso-actions">
+                      <button className="btn-test" onClick={() => testProvider(p)} disabled={busy || !p.issuer}>Test provider</button>
+                      <button className="btn-cancel" onClick={() => removeProvider(i)}>Remove</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+          <div className="sso-section">
+            <h4>Add a provider</h4>
+            <div className="sso-tiles">
+              {Object.entries(presets).filter(([k]) => k !== 'ldap').map(([k, v]) => (
+                <button key={k} className="sso-tile" onClick={() => addProvider(k)}>
+                  {v.name}
+                  <small>{k === 'google' ? 'Access by email list' : 'Groups to roles'}</small>
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {tab === 'ldap' && (
+        <>
+          <div className="sso-section">
+            <h4>Active Directory and LDAP</h4>
+            <p>Users type their directory password into JÁRN's sign-in form. JÁRN checks it with the directory and does not store it.</p>
+            <div className="sso-toggles">
+              <label className="settings-toggle">
+                <input type="checkbox" checked={ldap.enabled} onChange={e => setLdap({ ...ldap, enabled: e.target.checked })} />
+                Use the directory for sign-in
+              </label>
+            </div>
+          </div>
+
+          <div className="sso-section">
+            <h4>Connection</h4>
+            <div className="sso-grid">
+              <div><label>Server</label><input type="text" value={ldap.host} onChange={e => setLdap({ ...ldap, host: e.target.value })} placeholder="dc1.example.com" /></div>
+              <div><label>Port</label><input type="number" value={ldap.port} onChange={e => setLdap({ ...ldap, port: Number(e.target.value) })} /></div>
+              <div className="wide sso-toggles">
+                <label className="settings-toggle"><input type="checkbox" checked={ldap.use_ssl} onChange={e => setLdap({ ...ldap, use_ssl: e.target.checked, starttls: e.target.checked ? false : ldap.starttls, port: e.target.checked ? 636 : 389 })} /> LDAPS (port 636)</label>
+                <label className="settings-toggle"><input type="checkbox" checked={ldap.starttls} disabled={ldap.use_ssl} onChange={e => setLdap({ ...ldap, starttls: e.target.checked })} /> STARTTLS (port 389)</label>
+                <label className="settings-toggle"><input type="checkbox" checked={ldap.verify_tls} onChange={e => setLdap({ ...ldap, verify_tls: e.target.checked })} /> Verify the server certificate</label>
+              </div>
+            </div>
+          </div>
+
+          <div className="sso-section">
+            <h4>Service account</h4>
+            <p>A read-only account JÁRN uses to search the directory. It never signs anyone in.</p>
+            <div className="sso-grid">
+              <div><label>Bind DN</label><input type="text" value={ldap.bind_dn} onChange={e => setLdap({ ...ldap, bind_dn: e.target.value })} placeholder="CN=jarn-svc,OU=Service,DC=example,DC=com" /></div>
+              <div><label>Password</label><input type="password" value={ldap.bind_password} onChange={e => setLdap({ ...ldap, bind_password: e.target.value })} placeholder={ldap.bind_password_set ? 'Saved, leave blank to keep' : ''} /></div>
+            </div>
+          </div>
+
+          <div className="sso-section">
+            <h4>Users and groups</h4>
+            <div className="sso-grid">
+              <div className="wide"><label>Search base DN</label><input type="text" value={ldap.base_dn} onChange={e => setLdap({ ...ldap, base_dn: e.target.value })} placeholder="OU=Staff,DC=example,DC=com" /></div>
+              <div className="wide"><label>User search filter</label><input type="text" value={ldap.user_filter} onChange={e => setLdap({ ...ldap, user_filter: e.target.value })} /><div className="sso-hint">{'{username}'} is replaced with the user name typed at sign-in.</div></div>
+              <div><label>Username attribute</label><input type="text" value={ldap.username_attribute} onChange={e => setLdap({ ...ldap, username_attribute: e.target.value })} /><div className="sso-hint">sAMAccountName for AD, uid for OpenLDAP</div></div>
+              <div><label>Email attribute</label><input type="text" value={ldap.email_attribute} onChange={e => setLdap({ ...ldap, email_attribute: e.target.value })} /></div>
+              <div><label>Group attribute on the user</label><input type="text" value={ldap.group_attribute} onChange={e => setLdap({ ...ldap, group_attribute: e.target.value })} /><div className="sso-hint">memberOf in Active Directory</div></div>
+              <div><label>Group search base</label><input type="text" value={ldap.group_base_dn} onChange={e => setLdap({ ...ldap, group_base_dn: e.target.value })} /><div className="sso-hint">Used when the user has no group attribute</div></div>
+              <div className="wide">
+                <label>Group to role</label>
+                <RoleMapEditor value={ldap.role_map} onChange={role_map => setLdap({ ...ldap, role_map })} placeholder="CN=JARN-Admins,OU=Groups,DC=example,DC=com" />
+              </div>
+              <div>
+                <label>Role for anyone who matches no group</label>
+                <select value={ldap.default_role} onChange={e => setLdap({ ...ldap, default_role: e.target.value })}>
+                  {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r || 'None: refuse sign-in'}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="sso-section">
+            <h4>Test a user</h4>
+            <p>Looks up a user name in the directory and shows the role that sign-in would grant. No password is checked.</p>
+            <div className="sso-actions" style={{ marginTop: 0 }}>
+              <input type="text" value={ldapTestUser} onChange={e => setLdapTestUser(e.target.value)} placeholder="User name" />
+              <button className="btn-test" onClick={testLdap} disabled={busy || !ldapTestUser || !ldap.host}>Look up</button>
+            </div>
+            {ldapTestResult && <p className="sso-hint" style={{ marginTop: 8 }}>{ldapTestResult}</p>}
+          </div>
+        </>
+      )}
+
+      <div className="sso-savebar">
+        <button className="btn-save-settings" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save single sign-on'}</button>
+        {message && <span className="sso-message" style={{ color: message.ok ? 'var(--success)' : 'var(--error)' }}>{message.text}</span>}
+      </div>
+    </div>
+  )
+}
+
 interface HostKeyRow {
   server_id: string
   hostname: string
@@ -1097,6 +1542,12 @@ function UsersSection() {
     }
   }
 
+  const deleteUser = async (u: UserRow) => {
+    const question = `Delete ${u.username}?\n\nThey lose all access, and their password and MFA are removed. Their past actions stay in the audit trail.`
+    if (!window.confirm(question)) return
+    if (await call('DELETE', `/api/v1/users/${u.id}`)) setMessage({ ok: true, text: `${u.username} deleted` })
+  }
+
   const addUser = async () => {
     const ok = await call('POST', '/api/v1/users', { username: form.username, password: form.password, email: form.email || null, role: form.role })
     if (ok) {
@@ -1115,7 +1566,7 @@ function UsersSection() {
         </p>
         <table className="servers-table">
           <thead>
-            <tr><th>Username</th><th>Role</th><th>Active</th><th>MFA</th><th>Reset password</th></tr>
+            <tr><th>Username</th><th>Role</th><th>Active</th><th>MFA</th><th>Reset password</th><th></th></tr>
           </thead>
           <tbody>
             {users.map(u => (
@@ -1139,6 +1590,11 @@ function UsersSection() {
                     onClick={async () => { if (await call('PUT', `/api/v1/users/${u.id}`, { password: resetPassword[u.id] })) setResetPassword({ ...resetPassword, [u.id]: '' }) }}>
                     Set
                   </button>
+                </td>
+                <td>
+                  {getUser()?.username !== u.username && (
+                    <button className="btn-cancel" disabled={busy} onClick={() => deleteUser(u)}>Delete</button>
+                  )}
                 </td>
               </tr>
             ))}

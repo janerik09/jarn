@@ -20,6 +20,12 @@ RUN pip install --no-cache-dir -r requirements.txt \
 
 COPY . .
 
+# Run as an unprivileged user. uid 1000 matches the owner of the host folders the app writes to (./tls, ./backups)
+RUN groupadd --gid 1000 app && useradd --uid 1000 --gid app --no-create-home --shell /usr/sbin/nologin app \
+    && chown -R root:root /app
+
+USER app
+
 EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

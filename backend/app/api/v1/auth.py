@@ -20,11 +20,11 @@ from app.database import get_db
 from app.logging_config import get_logger
 from app.models import User
 from app.models.audit import SessionToken
-from app.models.user import Role
+from app.models.user import AuthType, Role
 from app.security import (create_access_token, create_refresh_token, decode_token,
                           hash_password, verify_password)
 from app.config import settings
-from app.services import ratelimit, totp
+from app.services import audit, ratelimit, totp
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -189,15 +189,41 @@ async def _recent_failed_logins(db: AsyncSession, username: str) -> int:
 
 @router.post("/login")
 async def login(request: LoginRequest, http: Request, response: Response, db: AsyncSession = Depends(get_db)):
+    from app.services import sso
     # Spreads guessing across many accounts from one address; the per-account lockout below catches the rest
     if not await ratelimit.allow(f"login:ip:{_client_ip(http)}", LOGIN_IP_LIMIT, LOGIN_IP_WINDOW_SECONDS):
         raise HTTPException(status_code=429, detail="Too many sign-in attempts from this address. Try again later.")
-    if await _recent_failed_logins(db, request.username.strip()) >= LOCKOUT_ATTEMPTS:
+    username = request.username.strip()
+    if await _recent_failed_logins(db, username) >= LOCKOUT_ATTEMPTS:
         raise HTTPException(status_code=429, detail=f"Too many failed sign-in attempts. Try again in {LOCKOUT_MINUTES} minutes.")
-    user = await _user_by_name(db, request.username.strip())
-    if user is None or not verify_password(request.password, user.password_hash or ""):
-        logger.warning("login_failed", username=request.username)
-        raise HTTPException(status_code=401, detail=INVALID_LOGIN)
+    config = await sso.load_config(db)
+    user = await _user_by_name(db, username)
+
+    if user is not None and user.auth_type == AuthType.oauth:
+        raise HTTPException(status_code=400, detail="This account signs in with single sign-on. Use the sign-in button for your provider.")
+
+    if user is not None and user.auth_type == AuthType.local:
+        if not sso.local_login_allowed(config, username):
+            raise HTTPException(status_code=403, detail="Password sign-in is turned off. Use single sign-on.")
+        if not verify_password(request.password, user.password_hash or ""):
+            logger.warning("login_failed", username=username)
+            raise HTTPException(status_code=401, detail=INVALID_LOGIN)
+    else:
+        # Directory accounts, and names not yet known locally when LDAP is on
+        if not sso.ldap_enabled(config):
+            logger.warning("login_failed", username=username)
+            raise HTTPException(status_code=401, detail=INVALID_LOGIN)
+        try:
+            user = await sso.ldap_sign_in(db, username, request.password, config.get("ldap") or {})
+        except sso.SignInDenied as e:
+            logger.warning("login_ldap_failed", username=username, reason=str(e))
+            await audit.record("auth.sso.login", category="auth", outcome="failure", actor_name=username,
+                               source="ldap", reason=str(e))
+            raise HTTPException(status_code=401, detail=str(e) if "group" in str(e) or "disabled" in str(e) else INVALID_LOGIN)
+        except Exception as e:
+            logger.error("ldap_unavailable", error=str(e))
+            raise HTTPException(status_code=503, detail="The directory service could not be reached. Try again later.")
+
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account is disabled")
     if user.mfa_enabled:

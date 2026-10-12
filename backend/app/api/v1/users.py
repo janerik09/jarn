@@ -1,5 +1,7 @@
 """User administration. Admins only."""
 
+import uuid
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,6 +15,7 @@ from app.api.v1.auth import _user_view
 from app.database import get_db
 from app.logging_config import get_logger
 from app.models import User
+from app.models.audit import SessionToken
 from app.models.user import Role
 from app.security import hash_password
 
@@ -53,7 +56,8 @@ async def _active_admins(db: AsyncSession) -> int:
 @router.get("")
 async def list_users(db: AsyncSession = Depends(get_db)):
     users = (await db.execute(select(User).options(selectinload(User.roles)).order_by(User.username))).scalars().all()
-    return {"users": [_user_view(u) for u in users]}
+    # Deleted accounts remain in the database for the audit trail, but are not listed
+    return {"users": [_user_view(u) for u in users if not (u.metadata_ or {}).get("deleted_at")]}
 
 
 @router.post("", status_code=201)
@@ -102,3 +106,34 @@ async def update_user(user_id: str, payload: UserUpdate, actor: User = Depends(c
                         details={'changes': _audit.diff(_before, _after), 'password_reset': bool(payload.password)})
     logger.info("user_updated", username=user.username)
     return _user_view(user)
+
+
+@router.delete("/{user_id}")
+async def delete_user(user_id: str, actor: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    """Removes a user's access and personal data. The row stays, because the audit trail refers to it: deleting it
+    would break the record of what that user did. The name is freed for reuse."""
+    from sqlalchemy import update
+    from app.services import audit as _audit
+    user = (await db.execute(select(User).options(selectinload(User.roles)).where(User.id == user_id))).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.id == actor.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account")
+    if any(r.name == "admin" for r in user.roles) and user.is_active and await _active_admins(db) <= 1:
+        raise HTTPException(status_code=400, detail="At least one active admin is needed")
+    old_name = user.username
+    user.username = f"deleted-{uuid.uuid4().hex[:12]}"
+    user.email = None
+    user.password_hash = None
+    user.mfa_enabled = False
+    user.mfa = {}
+    user.is_active = False
+    user.roles = []
+    user.metadata_ = {"deleted_at": datetime.utcnow().isoformat(), "deleted_by": actor.username}
+    await db.execute(update(SessionToken).where(SessionToken.user_id == user.id, SessionToken.revoked_at.is_(None))
+                     .values(revoked_at=datetime.utcnow(), revoked_reason="user deleted"))
+    await db.commit()
+    await _audit.record("user.delete", category="users", resource_type="user", resource_id=user_id,
+                        details={"former_username": old_name, "deleted_by": actor.username})
+    logger.info("user_deleted", user_id=user_id)
+    return {"deleted": True}

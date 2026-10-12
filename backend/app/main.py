@@ -12,7 +12,7 @@ from app.logging_config import configure_logging, get_logger
 # Import all models to register them with Base BEFORE init_db is called
 import app.models  # noqa: F401
 
-from app.api.v1 import auth, servers, patches, jobs, schedules, audit, admin, demo, patch_groups, distro_upgrades, compliance, backups, tls as tls_api, users, offsite as offsite_api, host_keys as host_keys_api, platform as platform_api
+from app.api.v1 import auth, servers, patches, jobs, schedules, audit, admin, demo, patch_groups, distro_upgrades, compliance, backups, tls as tls_api, users, offsite as offsite_api, host_keys as host_keys_api, platform as platform_api, sso as sso_api
 from app.api.deps import guard, READ, ADMIN
 from app.api import health
 
@@ -117,6 +117,9 @@ app.include_router(backups.router, prefix="/api/v1", tags=["backups"], dependenc
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"], dependencies=[Depends(guard(read=READ, write=ADMIN))])
 app.include_router(tls_api.router, prefix="/api/v1/admin/tls", tags=["tls"], dependencies=[Depends(guard(read=READ, write=ADMIN))])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
+app.include_router(sso_api.public, prefix="/api/v1/auth", tags=["sso"])
+app.include_router(sso_api.admin, prefix="/api/v1/admin/sso", tags=["sso"],
+                   dependencies=[Depends(guard(read=ADMIN, write=ADMIN))])
 app.include_router(platform_api.router, prefix="/api/v1/platform", tags=["platform"], dependencies=[Depends(guard())])
 app.include_router(host_keys_api.router, prefix="/api/v1/admin/host-keys", tags=["host-keys"],
                    dependencies=[Depends(guard(read=ADMIN, write=ADMIN))])
