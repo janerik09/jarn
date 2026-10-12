@@ -85,7 +85,7 @@ jobs:
         run: $TRIVY image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 jarn-web:ci
       - name: Software bill of materials (CycloneDX)
         run: $TRIVY image --format cyclonedx --output /dev/stdout jarn-backend:ci > sbom-backend.cdx.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: sbom-backend.cdx.json
