@@ -36,6 +36,9 @@ class SystemSettings(Base):
     # Off-host copy of database dumps and audit archives over SFTP. Holds the SSH key or password, so encrypted at rest
     offsite_config = Column(SealedJSON, nullable=False, default={})
 
+    # Single sign-on: OpenID Connect providers and LDAP / Active Directory. Holds client secrets and the bind password
+    sso_config = Column(SealedJSON, nullable=False, default={})
+
     # Auto-approval policies
     auto_approve_critical = Column(String(1), nullable=False, default="f")  # Auto-approve critical security patches
     require_approval_for_kernel = Column(String(1), nullable=False, default="t")  # Require approval for kernel updates

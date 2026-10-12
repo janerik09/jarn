@@ -8,3 +8,7 @@ useDefault = true
 description = "RFC 6238 published TOTP test vector, not a credential"
 paths = ['''backend/tests/test_totp_and_passwords\.py''']
 regexes = ['''GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ''']
+
+[[allowlists]]
+description = "Commit d9b4d67 added the same RFC 6238 test vector before it was generated at run time"
+commits = ["d9b4d6765099a93a5eb43a79aafd9bee3c19c529"]

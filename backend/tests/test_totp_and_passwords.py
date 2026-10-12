@@ -1,3 +1,4 @@
+import base64
 import time
 
 from app import security
@@ -6,7 +7,7 @@ from app.services import totp
 
 def test_rfc6238_reference_vectors():
     # RFC 6238 Appendix B, SHA-1, 8-digit codes truncated to the last 6 digits
-    secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"  # base32 of "12345678901234567890"
+    secret = base64.b32encode(b"12345678901234567890").decode()  # RFC 6238 test vector key
     assert totp.code_at(secret, 59) == "287082"
     assert totp.code_at(secret, 1111111109) == "081804"
     assert totp.code_at(secret, 1234567890) == "005924"
