@@ -81,6 +81,10 @@ Each server ends as `success`, `failed`, `rolled_back` or `skipped`. A server wh
 
 Servers in a wave run at the same time, up to the **maximum servers at once** set in Admin Settings (default 5).
 
+A server takes part in one patch run at a time. Starting a job that includes a server a running job is already
+patching is refused. A job that has been started cannot be started again, so a double click does nothing extra.
+Draft jobs that have not started do not hold their servers.
+
 ### Retrying
 
 SSH connections are attempted up to three times, with 10 and 30 seconds between attempts. This happens before anything

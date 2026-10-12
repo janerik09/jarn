@@ -11,7 +11,6 @@ from app.connectors.ssh import pinned_host_key
 from app.logging_config import get_logger
 from typing import List, Optional
 from datetime import datetime
-import uuid
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -479,7 +478,6 @@ async def get_group_available_patches(
         # Scan patches from all servers and aggregate
         patches_by_name = {}
 
-        from app.models.server import OSType
 
         for server in servers:
             try:

@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.database import get_db
 from app.models import Server, PatchJob, PatchJobExecution, JobStatus, ExecutionStatus
-from app.connectors.ssh import SSHConnector
 from app.connectors.ssh import pinned_host_key
 from app.services.distro_upgrade import DistroUpgradeChecker
 from app.tasks import execute_distro_upgrade

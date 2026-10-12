@@ -5,7 +5,7 @@ from sqlalchemy.future import select
 from app.database import get_db
 from app.models import Schedule
 from app.logging_config import get_logger
-from typing import List, Optional
+from typing import List
 from datetime import datetime, timedelta
 
 logger = get_logger(__name__)

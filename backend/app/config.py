@@ -29,38 +29,8 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 7
     algorithm: str = "HS256"
 
-    # LDAP
-    ldap_enabled: bool = False
-    ldap_server: Optional[str] = None
-    ldap_port: int = 389
-    ldap_base_dn: Optional[str] = None
-    ldap_bind_dn: Optional[str] = None
-    ldap_bind_password: Optional[str] = None
-    ldap_user_search_filter: str = "(&(uid={username})(objectClass=inetOrgPerson))"
-
-    # OAuth2
-    oauth2_enabled: bool = False
-    oauth2_provider: Optional[str] = None  # okta, azure, google
-    oauth2_client_id: Optional[str] = None
-    oauth2_client_secret: Optional[str] = None
-    oauth2_discovery_url: Optional[str] = None
-
-    # SSH Settings
-    ssh_timeout: int = 30
-    ssh_port: int = 22
-    ssh_key_algorithm: str = "rsa"
-
-    # Job Execution
-    max_parallel_jobs: int = 10
-    max_retries: int = 3
-    retry_delay_seconds: int = 60
-
-    # Patch Scanning
-    patch_scan_interval_hours: int = 24
-
-    # Logging
+    # Logging level for the structured logs
     log_level: str = "INFO"
-    log_format: str = "json"
 
     class Config:
         env_file = ".env"

@@ -6,9 +6,9 @@ import hashlib
 import secrets
 import uuid
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy import select
@@ -23,7 +23,6 @@ from app.models.audit import SessionToken
 from app.models.user import AuthType, Role
 from app.security import (create_access_token, create_refresh_token, decode_token,
                           hash_password, verify_password)
-from app.config import settings
 from app.services import audit, ratelimit, totp
 
 logger = get_logger(__name__)

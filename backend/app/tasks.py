@@ -68,10 +68,17 @@ async def async_execute_job(job_id: str, resume: bool = False):
             return
 
         if not resume:
-            # Update job status to running
-            job.status = JobStatus.running
-            job.start_time = datetime.utcnow()
+            # Claim the job atomically: only a pending job can be started, so a second task for the same job stops here
+            from sqlalchemy import update as sa_update
+            claimed = (await db.execute(
+                sa_update(PatchJob).where(PatchJob.id == job_id, PatchJob.status == JobStatus.pending)
+                .values(status=JobStatus.running, start_time=datetime.utcnow()).returning(PatchJob.id)
+            )).first()
             await db.commit()
+            if claimed is None:
+                logger.warning("job_not_pending_skipped", job_id=job_id)
+                return
+            await db.refresh(job)
 
             logger.info("job_execution_started", job_id=job_id)
 
@@ -239,6 +246,29 @@ async def async_execute_job(job_id: str, resume: bool = False):
 
 
 async def execute_on_server(execution_id: str, job_id: str, kubernetes_node: bool = False):
+    """Runs one server's part of a job, holding that server's lock so no other run can change it at the same time."""
+    from app.services.server_locks import ServerBusy, server_lock
+    async with AsyncSessionLocal() as db:
+        execution = (await db.execute(select(PatchJobExecution).where(PatchJobExecution.id == execution_id))).scalar_one_or_none()
+        if execution is None:
+            return
+        server_id = str(execution.server_id)
+    try:
+        async with server_lock(server_id, f"job {job_id}"):
+            await _execute_on_server(execution_id, job_id, kubernetes_node)
+    except ServerBusy as busy:
+        async with AsyncSessionLocal() as db:
+            execution = (await db.execute(select(PatchJobExecution).where(PatchJobExecution.id == execution_id))).scalar_one()
+            execution.status = ExecutionStatus.failed
+            execution.error_message = str(busy)
+            execution.execution_end = datetime.utcnow()
+            await db.commit()
+        from app.services import audit as _audit
+        await _audit.record("job.server_result", category="job", resource_type="server", resource_id=server_id,
+                            outcome="failure", reason=str(busy), details={"job_id": job_id, "busy_with": busy.holder})
+
+
+async def _execute_on_server(execution_id: str, job_id: str, kubernetes_node: bool = False):
     """Execute patches on a single server"""
     async with AsyncSessionLocal() as db:
         try:

@@ -2,9 +2,8 @@ import asyncio
 from typing import List, Dict, Any
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from app.models import Server, PatchJob
-from app.models.server import OSType, AuthMethod
+from app.models.server import OSType
 from app.connectors import SSHConnector
 from app.connectors.ssh import pinned_host_key
 from app.logging_config import get_logger

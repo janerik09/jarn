@@ -3,7 +3,7 @@ Pre- and post-patch health checks for Linux servers.
 Ensures system is healthy before patching and validates after.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List
 from app.connectors.ssh import SSHConnector
 from app.logging_config import get_logger
 

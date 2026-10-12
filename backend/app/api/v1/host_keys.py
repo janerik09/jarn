@@ -5,7 +5,7 @@ requires the fingerprint the administrator read from the server, and is refused 
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel

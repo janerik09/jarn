@@ -127,12 +127,12 @@ category from `audit.category_for`, and put only non-secret detail in `details`.
 
 ## Where job logic lives
 
-- `app/tasks.py` (`async_execute_job`, `execute_on_server`, `execute_patches`) is the live runner: waves, health
-  checks, rollback, reboot handling, Kubernetes ordering and the final job status.
-- `app/services/job_service.py` creates, cancels and retries jobs for the API. Its `_execute_with_retry` and
-  `max_parallel_jobs` are not used by the live runner. Do not add behaviour there expecting it to run.
+- `app/tasks.py` (`async_execute_job`, `execute_on_server`, `execute_patches`) is the patch runner: waves, health
+  checks, rollback, reboot handling, Kubernetes ordering and the final job status. `execute_on_server` holds the
+  server's lock (`app/services/server_locks.py`) for the whole run.
+- `app/services/job_service.py` creates and cancels jobs and builds status and failed-server lists for the API. Patch
+  execution does not live there.
 - `app/services/preflight_service.py` implements the pre-flight checks behind `POST /jobs/{id}/preflight-check`.
-- `app/api/v1/demo.py` is mounted only when `DEBUG` is on.
 
 ## Troubleshooting
 

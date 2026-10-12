@@ -12,9 +12,8 @@ from app.logging_config import configure_logging, get_logger
 # Import all models to register them with Base BEFORE init_db is called
 import app.models  # noqa: F401
 
-from app.api.v1 import auth, servers, patches, jobs, schedules, audit, admin, demo, patch_groups, distro_upgrades, compliance, backups, tls as tls_api, users, offsite as offsite_api, host_keys as host_keys_api, platform as platform_api, sso as sso_api
+from app.api.v1 import auth, servers, patches, jobs, schedules, audit, admin, patch_groups, distro_upgrades, compliance, backups, tls as tls_api, users, offsite as offsite_api, host_keys as host_keys_api, platform as platform_api, sso as sso_api
 from app.api.deps import guard, READ, ADMIN
-from app.api import health
 
 # Configure logging
 configure_logging()
@@ -127,8 +126,6 @@ app.include_router(offsite_api.router, prefix="/api/v1/admin/offsite", tags=["of
                    dependencies=[Depends(guard(read=ADMIN, write=ADMIN))])
 from app.api import metrics as metrics_api  # noqa: E402
 app.include_router(metrics_api.router, tags=["monitoring"])
-if settings.debug:  # Demo data endpoints are never mounted in production
-    app.include_router(demo.router, prefix="/api/v1", tags=["demo"], dependencies=[Depends(guard())])
 
 # Root endpoint
 @app.get("/")

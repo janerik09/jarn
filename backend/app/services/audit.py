@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import func, insert, select, text
+from sqlalchemy import insert, select, text
 
 from app.database import AsyncSessionLocal
 from app.logging_config import get_logger

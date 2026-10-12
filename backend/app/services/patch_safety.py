@@ -5,7 +5,6 @@ Detects potentially dangerous patches before installation.
 
 from enum import Enum
 from typing import List, Dict, Tuple
-from app.connectors.base import PatchInfo
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)

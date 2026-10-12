@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import admin_only, current_user, level_of
+from app.api.deps import admin_only, current_user
 from app.api.v1.auth import _user_view
 from app.database import get_db
 from app.logging_config import get_logger

@@ -40,44 +40,35 @@ class RemoteConnector(ABC):
     @abstractmethod
     async def connect(self) -> bool:
         """Establish connection to remote system"""
-        pass
 
     @abstractmethod
     async def disconnect(self) -> None:
         """Close connection"""
-        pass
 
     @abstractmethod
     async def execute_command(self, command: str, timeout: int = 30) -> CommandResult:
         """Execute a command on the remote system"""
-        pass
 
     @abstractmethod
     async def scan_available_patches(self) -> List[PatchInfo]:
         """Scan for available patches on the system"""
-        pass
 
     @abstractmethod
     async def install_patches(self, patches: List[str], dry_run: bool = False) -> CommandResult:
         """Install specific patches on the system"""
-        pass
 
     @abstractmethod
     async def rollback_patches(self) -> CommandResult:
         """Rollback last patch installation"""
-        pass
 
     @abstractmethod
     async def get_installed_patches(self) -> List[PatchInfo]:
         """Get list of currently installed patches"""
-        pass
 
     @abstractmethod
     async def reboot(self, force: bool = False) -> CommandResult:
         """Reboot the system after patching"""
-        pass
 
     @abstractmethod
     async def health_check(self) -> Dict[str, Any]:
         """Get system health information"""
-        pass

@@ -4,7 +4,7 @@ Kept free of database and SSH code so they can be tested directly.
 """
 
 import asyncio
-from typing import Awaitable, Callable, Iterable, Sequence, TypeVar
+from typing import Awaitable, Callable, Sequence, TypeVar
 
 T = TypeVar("T")
 

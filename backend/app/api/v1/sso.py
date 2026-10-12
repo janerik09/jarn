@@ -4,21 +4,18 @@ provider and directory settings, with tests that never reveal stored secrets.
 """
 
 import re
-import secrets
 from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import current_user
 from app.api.v1.auth import _issue_tokens, _set_refresh_cookie
 from app.database import get_db
 from app.logging_config import get_logger
-from app.models import User
 from app.models.settings import SystemSettings
 from app.services import audit, sso
 

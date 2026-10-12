@@ -1,5 +1,5 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, status
+from fastapi import APIRouter, Depends, HTTPException, WebSocket
 from pydantic import BaseModel
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -238,6 +238,18 @@ async def execute_job(job_id: str, db: AsyncSession = Depends(get_db)):
 
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
+        if job.status != JobStatus.pending:
+            raise HTTPException(status_code=409, detail=f"This job is {job.status.value}, so it cannot be started again")
+
+        # A server can only be in one patch run at a time: refuse if a running job includes any of its servers.
+        # Drafts that were never started do not hold servers; the per-server lock catches them if they start later.
+        others = (await db.execute(select(PatchJob).where(
+            PatchJob.id != job.id, PatchJob.status == JobStatus.running))).scalars().all()
+        mine = {str(s) for s in job.server_ids}
+        for other in others:
+            overlap = mine & {str(s) for s in (other.server_ids or [])}
+            if overlap:
+                raise HTTPException(status_code=409, detail=f"Job '{other.name}' is running on {len(overlap)} of these servers. Wait for it to finish.")
 
         # Queue the job with Celery
         task = execute_patch_job.delay(job_id)
