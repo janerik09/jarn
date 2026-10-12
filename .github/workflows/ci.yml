@@ -70,32 +70,21 @@ jobs:
     name: Container images, scan and SBOM
     runs-on: ubuntu-latest
     needs: [backend, frontend]
+    env:
+      # Trivy runs from its own image, pinned by digest, so no third-party action is needed
+      TRIVY: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.1@sha256:ab70a02200597efa04748f210f793936eb647cbcdb0ea69cc30b226d6f5a22c7
     steps:
       - uses: actions/checkout@v4
       - name: Build backend image
         run: docker build -t jarn-backend:ci backend
       - name: Build web image
         run: docker build -f deploy/nginx/Dockerfile -t jarn-web:ci .
-      - name: Scan backend image (fails on high or critical findings)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: jarn-backend:ci
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-          ignore-unfixed: true
-      - name: Scan web image (fails on high or critical findings)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: jarn-web:ci
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-          ignore-unfixed: true
+      - name: Scan backend image (fails on high or critical findings with a fix)
+        run: $TRIVY image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 jarn-backend:ci
+      - name: Scan web image (fails on high or critical findings with a fix)
+        run: $TRIVY image --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 jarn-web:ci
       - name: Software bill of materials (CycloneDX)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: jarn-backend:ci
-          format: cyclonedx
-          output: sbom-backend.cdx.json
+        run: $TRIVY image --format cyclonedx --output /dev/stdout jarn-backend:ci > sbom-backend.cdx.json
       - uses: actions/upload-artifact@v4
         with:
           name: sbom
