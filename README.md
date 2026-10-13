@@ -149,6 +149,8 @@ Secrets go in `.env` in the project root. That file is git-ignored, so keep a co
 | `METRICS_TOKEN` | no | If set, `/metrics` needs `Authorization: Bearer <token>`. |
 | `AUDIT_RETENTION_DAYS` | no | Audit events older than this move to `backups/audit` and leave the live table. Default 365. |
 | `BACKUP_KEEP_DAYS` | no | How many local database dumps to keep. Default 14. |
+| `SESSION_IDLE_MINUTES` | no | Sign-in ends after this long without activity. Default 60. |
+| `SESSION_MAX_HOURS` | no | Sign-in ends this many hours after signing in, even if in use. Default 12. |
 
 Generate the three secrets with:
 
@@ -195,6 +197,9 @@ Open `http://<host>/`. The first visit asks you to create the administrator acco
   SameSite=Strict cookie limited to `/api/v1/auth`, and each refresh replaces it. If someone replays a token that has
   already been replaced, every session for that user is signed out. Two tabs refreshing at the same moment get a
   30-second grace period, so they don't trigger this.
+- **Session limits:** a session ends after `SESSION_IDLE_MINUTES` without activity (default 60) and `SESSION_MAX_HOURS`
+  after signing in (default 12). Activity means clicks, keys or scrolling in the browser. A tab left open signs itself out
+  after the idle period. Reopening the dashboard the next morning asks for a sign-in.
 - **Roles:** viewers can read. Operators can run jobs and change servers. Admins can change settings, users and
   backups.
 - **Encryption at rest:** credentials and TLS keys are sealed with AES-256-GCM.

@@ -75,7 +75,7 @@ function SetupForm({ onDone }: { onDone: () => void }) {
         setError(typeof data.detail === 'string' ? data.detail : 'Setup failed')
         return
       }
-      setSession({ access_token: data.access_token, user: data.user })
+      setSession({ access_token: data.access_token, user: data.user, idle_minutes: data.idle_minutes })
       onDone()
     } catch {
       setError('Could not reach the server')
@@ -153,7 +153,7 @@ function SignInForm({ onDone }: { onDone: () => void }) {
         setError('Enter the 6-digit code from your authenticator app, or a recovery code.')
         return
       }
-      setSession({ access_token: data.access_token, user: data.user })
+      setSession({ access_token: data.access_token, user: data.user, idle_minutes: data.idle_minutes })
       onDone()
     } catch {
       setError('Could not reach the server')

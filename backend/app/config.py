@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     credential_encryption_key: Optional[str] = None
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
+    # A session ends after this many minutes without a renewal (renewals happen when the user makes a request)
+    session_idle_minutes: int = 60
+    # A session ends this many hours after sign-in, even if it is in use
+    session_max_hours: int = 12
     algorithm: str = "HS256"
 
     # Logging level for the structured logs

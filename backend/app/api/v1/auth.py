@@ -21,6 +21,8 @@ from app.logging_config import get_logger
 from app.models import User
 from app.models.audit import SessionToken
 from app.models.user import AuthType, Role
+from app.config import settings
+from app.services.session_limits import session_timeout
 from app.security import (create_access_token, create_refresh_token, decode_token,
                           hash_password, verify_password)
 from app.services import audit, ratelimit, totp
@@ -34,7 +36,6 @@ INVALID_LOGIN = "Invalid username or password"
 # The refresh token lives in an HttpOnly cookie that only the auth endpoints receive, so scripts cannot read it
 REFRESH_COOKIE = "jarn_refresh"
 REFRESH_COOKIE_PATH = "/api/v1/auth"
-REFRESH_SECONDS = 7 * 24 * 3600
 REFRESH_GRACE_SECONDS = 30
 LOGIN_IP_LIMIT = 30  # sign-in attempts per address
 LOGIN_IP_WINDOW_SECONDS = 15 * 60
@@ -88,7 +89,7 @@ def _is_https(http: Request) -> bool:
 
 def _set_refresh_cookie(response: Response, http: Request, token: str) -> None:
     response.set_cookie(
-        REFRESH_COOKIE, token, max_age=REFRESH_SECONDS, path=REFRESH_COOKIE_PATH,
+        REFRESH_COOKIE, token, max_age=settings.session_max_hours * 3600, path=REFRESH_COOKIE_PATH,
         httponly=True, samesite="strict", secure=_is_https(http),
     )
 
@@ -105,8 +106,12 @@ def _signed_out(http: Request) -> JSONResponse:
     return response
 
 
-async def _issue_tokens(db: AsyncSession, user: User, sign_in: bool = True) -> dict:
-    """New access and refresh tokens, with the refresh token recorded as a session so it can be revoked."""
+async def _issue_tokens(db: AsyncSession, user: User, sign_in: bool = True, signed_in_at: Optional[datetime] = None) -> dict:
+    """New access and refresh tokens, with the refresh token recorded as a session so it can be revoked.
+
+    signed_in_at is carried over when a session is renewed, so the absolute limit counts from the real sign-in.
+    """
+    now = datetime.utcnow()
     subject = {"sub": str(user.id), "username": user.username, "type": "access"}
     access = create_access_token(subject, expires_delta=timedelta(minutes=ACCESS_MINUTES))
     refresh = create_refresh_token({"sub": str(user.id), "username": user.username})
@@ -115,11 +120,14 @@ async def _issue_tokens(db: AsyncSession, user: User, sign_in: bool = True) -> d
         user_id=user.id,
         token_jti=payload["jti"] if payload and "jti" in payload else uuid.uuid4().hex,
         expires_at=datetime.utcfromtimestamp(payload["exp"]) if payload else datetime.utcnow() + timedelta(days=7),
+        signed_in_at=signed_in_at or now,
+        last_used_at=now,
     ))
     if sign_in:
         user.last_login_at = datetime.utcnow()
     await db.commit()
-    return {"access_token": access, "refresh_token": refresh, "token_type": "bearer"}
+    return {"access_token": access, "refresh_token": refresh, "token_type": "bearer",
+            "idle_minutes": settings.session_idle_minutes}
 
 
 def _user_view(user: User) -> dict:
@@ -278,12 +286,21 @@ async def refresh(http: Request, response: Response, db: AsyncSession = Depends(
             ).values(revoked_at=datetime.utcnow(), revoked_reason="reuse detected"))
             await db.commit()
         return _signed_out(http)
+    now = datetime.utcnow()
+    timed_out = session_timeout(session.signed_in_at, session.last_used_at, now,
+                                settings.session_idle_minutes, settings.session_max_hours)
+    if timed_out:
+        session.revoked_at = now
+        session.revoked_reason = timed_out
+        await db.commit()
+        logger.info("session_timed_out", user_id=str(session.user_id), reason=timed_out)
+        return _signed_out(http)
     user = await _user_by_name(db, payload.get("username", ""))
     if user is None or not user.is_active or str(user.id) != payload.get("sub"):
         return _signed_out(http)
-    session.revoked_at = datetime.utcnow()
+    session.revoked_at = now
     session.revoked_reason = "rotated"
-    tokens = await _issue_tokens(db, user, sign_in=False)
+    tokens = await _issue_tokens(db, user, sign_in=False, signed_in_at=session.signed_in_at)
     _set_refresh_cookie(response, http, tokens.pop("refresh_token"))
     return {**tokens, "user": _user_view(user)}
 

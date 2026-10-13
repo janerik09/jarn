@@ -14,6 +14,9 @@ export interface SessionUser {
 
 let accessToken: string | null = null
 let currentUser: SessionUser | null = null
+// Set by the server with each sign-in or renewal. A signed-in tab with no input for this long signs itself out.
+let idleMinutes = 60
+let lastActivity = Date.now()
 const listeners = new Set<() => void>()
 
 const notify = () => listeners.forEach(fn => fn())
@@ -31,9 +34,11 @@ export function getAccessToken(): string | null {
   return accessToken
 }
 
-export function setSession(tokens: { access_token: string; user?: SessionUser }) {
+export function setSession(tokens: { access_token: string; user?: SessionUser; idle_minutes?: number }) {
   accessToken = tokens.access_token
   if (tokens.user) currentUser = tokens.user
+  if (tokens.idle_minutes) idleMinutes = tokens.idle_minutes
+  lastActivity = Date.now()
   notify()
 }
 
@@ -66,6 +71,7 @@ export async function renewSession(): Promise<boolean> {
       const data = await res.json()
       accessToken = data.access_token
       currentUser = data.user ?? currentUser
+      if (data.idle_minutes) idleMinutes = data.idle_minutes
       notify()
       return true
     } catch {
@@ -75,6 +81,19 @@ export async function renewSession(): Promise<boolean> {
     }
   })()
   return refreshing
+}
+
+// Clicks, keys and scrolling count as activity. Background polling does not, so a tab left open still signs out.
+const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'] as const
+
+export function watchInactivity() {
+  const markActive = () => { lastActivity = Date.now() }
+  ACTIVITY_EVENTS.forEach(name => window.addEventListener(name, markActive, { passive: true, capture: true }))
+  window.setInterval(() => {
+    if (accessToken && Date.now() - lastActivity > idleMinutes * 60_000) {
+      clearSession()
+    }
+  }, 30_000)
 }
 
 const PUBLIC_AUTH_PATHS = ['/api/v1/auth/login', '/api/v1/auth/setup', '/api/v1/auth/status', '/api/v1/auth/refresh', '/api/v1/auth/logout']

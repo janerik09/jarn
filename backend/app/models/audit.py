@@ -66,6 +66,10 @@ class SessionToken(Base):
     # Expiry
     expires_at = Column(DateTime, nullable=False, index=True)
 
+    # Session limits: when the user signed in (carried across renewals) and when the session was last renewed
+    signed_in_at = Column(DateTime, nullable=False, server_default=func.now())
+    last_used_at = Column(DateTime, nullable=False, server_default=func.now())
+
     # Revocation (for logout)
     revoked_at = Column(DateTime, nullable=True)
     revoked_reason = Column(String(255), nullable=True)
