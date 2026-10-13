@@ -6,7 +6,7 @@
 backend/
   app/
     api/v1/        HTTP routes, one module per area (auth, sso, servers, jobs, backups, offsite, audit, ...)
-    services/      The work itself: Proxmox provider, off-host copy, audit, notifications, TLS, SSO, server locks
+    services/      The work itself: backup providers (Proxmox and file), off-host copy, audit, notifications, TLS, SSO, server locks
     models/        SQLAlchemy models
     tasks.py       Celery tasks: patch jobs, backups, restores, scheduled work
     celery_app.py  Celery configuration and the beat schedule
@@ -55,9 +55,9 @@ docker run --rm --network patching-network \
 The lock tests need Redis, and the rest of the suite is fine without it. To run one file, add its path after `pytest -q`.
 
 The suite covers the cron logic, compliance mapping, profiles and discovery, TLS and secret sealing, maintenance
-windows, TOTP and passwords, the Proxmox restore preflight, the off-host copy and security checks, SSO, the per-server
-locks, and an import test for the whole application. The Proxmox and SFTP calls are replaced with fakes, so the suite
-never contacts a real server.
+windows, TOTP and passwords, the Proxmox restore preflight, file backups (archive, checksum, restore and retention),
+the off-host copy and security checks, SSO, the per-server locks, and an import test for the whole application. The
+Proxmox, SSH and SFTP calls are replaced with fakes, so the suite never contacts a real server.
 
 There's no automated test runner for the frontend yet. The check for now is a production build:
 

@@ -20,7 +20,8 @@ These are targets, not promises. Time your own restore with the drill described 
 | `.env`, with all three secrets | An offline copy in a password manager or a sealed envelope. Never in the repository. | Without the key, encrypted credentials are gone. Without `SECRET_KEY`, existing sessions stop working, which is acceptable. |
 | Database dumps, `backups/patching_db-*.dump` | On this host, and off the host through **Admin Settings → Off-host copy** | The platform's data: servers, jobs, the audit trail and settings |
 | Audit archives, `backups/audit/*.jsonl.gz` | The same places as the dumps | Events older than the retention period |
-| Proxmox VM backups | Proxmox Backup Server, managed in Proxmox | These aren't part of JÁRN's copy. Restore VMs from Proxmox. |
+| Proxmox VM backups, if you use them | Wherever your Proxmox backup jobs store them, managed in Proxmox | These aren't part of JÁRN's copy. Restore VMs from Proxmox. |
+| File backups of managed servers, `<share>/<server id>/*.tar.gz` | The NFS share you mounted for file backups | These aren't part of JÁRN's copy. Each `.json` manifest beside an archive holds its size and checksum. |
 | `tls/` | Optional | You can regenerate the certificates or upload them again under Admin Settings → Web access |
 
 The dashboard shows a banner when backups aren't protected off the host. If you see it, fix that before anything else.
@@ -58,7 +59,7 @@ The dashboard shows a banner when backups aren't protected off the host. If you 
 Stored SSH keys, passwords and backup tokens can't be recovered. Everything else restores normally. Then:
 
 1. Generate a new `CREDENTIAL_ENCRYPTION_KEY` (see `.env.example`), and put it in `.env`.
-2. Enter the SSH key or password for each server again. Do the same for the Proxmox and off-host credentials.
+2. Enter the SSH key or password for each server again. Do the same for the backup target and off-host credentials.
 3. Approve each server's host key again.
 
 Save the new key to your offline copy straight away. Treat losing the key as an incident.
@@ -85,4 +86,7 @@ off-host copy.
 ## Known gaps
 
 - The database and the worker run on one host. If the host is lost, you restore; nothing fails over automatically.
-- Proxmox backups are outside this guide. Their restore steps are in Proxmox's documentation.
+- Proxmox VM backups are outside this guide. Their restore steps are in Proxmox's documentation.
+- File backups on a share can be restored without JÁRN. Check the archive first: `sha256sum` of the `.tar.gz` must match the
+  `sha256` in the `.json` manifest beside it. Then copy it to the server and run, as root, `tar --numeric-owner -xzpf <archive> -C /`.
+  That puts back only the paths the backup holds, and it does not roll back packages or the kernel.

@@ -63,6 +63,8 @@ services:
     volumes:
       - ./tls:/tls
       - ./backups:/backups:ro
+      # File backups to an NFS share (README, Backups). Mount the share on this host at the same path, then uncomment:
+      # - /mnt/jarn-backups:/mnt/jarn-backups
 
   worker:
     build:
@@ -84,6 +86,8 @@ services:
         condition: service_healthy
     volumes:
       - ./backups:/backups
+      # File backups to an NFS share (README, Backups). Same path as on the backend, uncomment with it:
+      # - /mnt/jarn-backups:/mnt/jarn-backups
     command: celery -A app.celery_app worker --loglevel=info
 
   beat:

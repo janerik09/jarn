@@ -16,6 +16,9 @@ interface Check {
 interface Preflight {
   ok: boolean
   volid: string
+  kind?: 'vm' | 'files'
+  paths?: string[]
+  backup_size?: number | null
   target_storage: string | null
   disks: { key: string; storage: string; size_bytes: number; target_storage: string }[]
   checks: Check[]
@@ -54,8 +57,10 @@ export function ServerBackups({ serverId }: { serverId: string }) {
       const res = await fetch(`${base()}/servers/${serverId}/backups`)
       const data = await res.json()
       if (!res.ok) {
-        setNotMapped(true)
+        // Only an unmapped server gets the mapping hint; other failures, such as an unmounted share, are shown as they are
+        setNotMapped(res.status === 400 && /not mapped/i.test(data.detail || ''))
         setBackups([])
+        if (!/not mapped/i.test(data.detail || '')) setMessage({ ok: false, text: data.detail || 'Could not load backups' })
         return
       }
       setNotMapped(false)
@@ -153,8 +158,12 @@ export function ServerBackups({ serverId }: { serverId: string }) {
 
   const confirmRestore = () => {
     if (!restoreVolid || !preflight?.ok) return
+    const isFiles = preflight.kind === 'files'
     const where = targetStorage ? `to storage ${targetStorage}` : 'to the original storage of each disk'
-    if (!window.confirm(`Restore this VM ${where} from the selected backup? Anything changed since the backup will be lost.`)) return
+    const question = isFiles
+      ? 'Restore the backed-up files on this server from the selected backup? Those files are overwritten with the backup copy, and anything changed in them since the backup is lost.'
+      : `Restore this VM ${where} from the selected backup? Anything changed since the backup will be lost.`
+    if (!window.confirm(question)) return
     const volid = restoreVolid
     const target = targetStorage
     closeRestore()
@@ -165,7 +174,7 @@ export function ServerBackups({ serverId }: { serverId: string }) {
     <div className="detail-section">
       <h4>Backups</h4>
       {notMapped ? (
-        <p className="settings-help">Map this server to its VM in Admin Settings → Backup first.</p>
+        <p className="settings-help">Map this server to a backup source in Admin Settings → Backup first.</p>
       ) : (
         <>
           <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
@@ -208,32 +217,41 @@ export function ServerBackups({ serverId }: { serverId: string }) {
                 ))}
               </ul>
 
-              <table style={{ width: '100%', fontSize: '0.85em', marginBottom: 10 }}>
-                <thead>
-                  <tr><th style={{ textAlign: 'left' }}>Disk</th><th style={{ textAlign: 'left' }}>Size</th><th style={{ textAlign: 'left' }}>Restores to</th></tr>
-                </thead>
-                <tbody>
-                  {preflight.disks.map(d => (
-                    <tr key={d.key}>
-                      <td>{d.key}</td>
-                      <td>{formatBytes(d.size_bytes)}</td>
-                      <td>{d.target_storage}{!targetStorage && <span className="settings-help"> (original)</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              {preflight.kind === 'files' ? (
+                <div style={{ fontSize: '0.85em', marginBottom: 10 }}>
+                  <div className="settings-help">Paths restored: {(preflight.paths || []).join(', ') || '–'}</div>
+                  <div className="settings-help">Archive size: {formatBytes(preflight.backup_size)}</div>
+                </div>
+              ) : (
+                <>
+                  <table style={{ width: '100%', fontSize: '0.85em', marginBottom: 10 }}>
+                    <thead>
+                      <tr><th style={{ textAlign: 'left' }}>Disk</th><th style={{ textAlign: 'left' }}>Size</th><th style={{ textAlign: 'left' }}>Restores to</th></tr>
+                    </thead>
+                    <tbody>
+                      {preflight.disks.map(d => (
+                        <tr key={d.key}>
+                          <td>{d.key}</td>
+                          <td>{formatBytes(d.size_bytes)}</td>
+                          <td>{d.target_storage}{!targetStorage && <span className="settings-help"> (original)</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
 
-              <label style={{ display: 'block', fontSize: '0.9em', marginBottom: 8 }}>
-                Restore storage{' '}
-                <select value={targetStorage} onChange={e => chooseStorage(e.target.value)} disabled={checking}>
-                  <option value="">Original storage of each disk</option>
-                  {preflight.candidates.map(c => (
-                    <option key={c.storage} value={c.storage}>
-                      {c.storage} ({c.type}) — {formatBytes(c.available_bytes)} free{c.fits ? '' : ', too small for whole VM'}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <label style={{ display: 'block', fontSize: '0.9em', marginBottom: 8 }}>
+                    Restore storage{' '}
+                    <select value={targetStorage} onChange={e => chooseStorage(e.target.value)} disabled={checking}>
+                      <option value="">Original storage of each disk</option>
+                      {preflight.candidates.map(c => (
+                        <option key={c.storage} value={c.storage}>
+                          {c.storage} ({c.type}) — {formatBytes(c.available_bytes)} free{c.fits ? '' : ', too small for whole VM'}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </>
+              )}
             </>
           )}
           <div style={{ display: 'flex', gap: 8 }}>

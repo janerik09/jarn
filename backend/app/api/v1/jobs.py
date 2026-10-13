@@ -51,7 +51,7 @@ async def create_job(
             servers = (await db.execute(select(Server).where(Server.id.in_(request.server_ids)))).scalars().all()
             unmapped = [s.hostname for s in servers if not mapping_from_server(s.metadata_)]
             if unmapped:
-                raise HTTPException(status_code=400, detail=f"Map these servers to their VM in Admin Settings: {', '.join(unmapped)}")
+                raise HTTPException(status_code=400, detail=f"Map these servers to a backup source in Admin Settings: {', '.join(unmapped)}")
 
         if request.deployment_strategy not in ("all", "canary", "staged"):
             raise HTTPException(status_code=400, detail="deployment_strategy must be all, canary or staged")

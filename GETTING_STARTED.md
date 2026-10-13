@@ -6,7 +6,8 @@ first administrator, and the first server.
 ## What you need
 
 - Docker, with the Compose plugin. Check with `docker compose version`.
-- A host that can reach your servers over SSH. If you use Proxmox backups, it also needs to reach the Proxmox API.
+- A host that can reach your servers over SSH. If you use backups, it also needs to reach a Proxmox API (for VMs) or
+  the NFS share you store file backups on.
 - Ports 80 free on the host, and 443 too if you want HTTPS. See [NETWORK_ACCESS.md](NETWORK_ACCESS.md).
 
 ## 1. Create the secrets
@@ -65,11 +66,17 @@ docker compose exec backend python -m app.cli reset-password <username>
 
 The command asks for the new password and never prints it.
 
-## 4. Connect Proxmox (optional)
+## 4. Set up backups (optional)
 
-Go to **Admin Settings → Backup**. Add a target with its API URL (usually `https://<proxmox-host>:8006`) and an API
-token, then save. Enter the token secret only there. After that, map each server to its VM or container. Backups only
-run when you start them.
+Backups are not needed to patch servers. If you want them, go to **Admin Settings → Backup** and choose what fits each
+server:
+
+- **File backups** for servers without a backup solution: add a file backup target, pointing at a folder on this host
+  that is a mounted NFS share. See the README's Backups section for the mount steps.
+- **Proxmox** for servers that are Proxmox VMs or containers: add a target with its API URL (usually
+  `https://<proxmox-host>:8006`) and an API token. Enter the token secret only there.
+
+Then map each server to its backup source. Backups only run when you start them.
 
 ## 5. Turn on the off-host copy
 

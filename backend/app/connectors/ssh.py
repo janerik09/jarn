@@ -103,6 +103,7 @@ class SSHConnector(RemoteConnector):
 
             kwargs = {
                 "username": self.username,
+                "port": port,  # without this, servers on a non-standard SSH port were dialled on 22
                 "timeout": self.connection_params.get("timeout", 30),
             }
 
@@ -165,6 +166,51 @@ class SSHConnector(RemoteConnector):
         except Exception as e:
             logger.error("connection_test_failed", hostname=self.hostname, error=str(e))
             return False
+
+    def run_stream(self, command: str, *, upload_path: Optional[str] = None, download=None,
+                   timeout: int = 3600) -> tuple:
+        """Run a command that moves a large file in one direction. Returns (exit_status, stderr).
+
+        upload_path: a local file sent to the command's stdin.
+        download: a function called with each chunk of the command's stdout (used for archives).
+        A sudo password is sent first on stdin, as in _execute_command_sync, so an upload cannot be combined with sudo.
+        """
+        import threading
+        if not self.connected or self.client is None:
+            return 1, "Not connected"
+        password = self.connection_params.get("password")
+        use_password = bool(password) and "sudo" in command
+        if upload_path and use_password:
+            raise ValueError("A command that uploads data cannot also use a sudo password on stdin")
+        if use_password:
+            command = command.replace("sudo ", "sudo -S ")
+        stdin, stdout, stderr = self.client.exec_command(command, timeout=timeout)
+        channel = stdout.channel
+        channel.settimeout(timeout)
+        # stderr is read on its own thread so a full stderr buffer cannot stall the archive stream
+        stderr_chunks: List[bytes] = []
+        reader = threading.Thread(target=lambda: stderr_chunks.append(stderr.read()), daemon=True)
+        reader.start()
+        try:
+            if use_password:
+                stdin.write(password + "\n")
+            if upload_path:
+                with open(upload_path, "rb") as source:
+                    for chunk in iter(lambda: source.read(65536), b""):
+                        stdin.write(chunk)
+            # Close stdin so a remote command that reads it cannot wait forever
+            stdin.flush()
+            channel.shutdown_write()
+            while True:
+                chunk = stdout.read(65536)
+                if not chunk:
+                    break
+                if download is not None:
+                    download(chunk)
+            returncode = channel.recv_exit_status()
+        finally:
+            reader.join(timeout=30)
+        return returncode, b"".join(stderr_chunks).decode("utf-8", errors="replace")
 
     async def execute_command(self, command: str, timeout: int = 30) -> CommandResult:
         import time

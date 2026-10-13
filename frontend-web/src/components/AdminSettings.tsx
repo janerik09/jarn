@@ -24,6 +24,10 @@ interface BackupTarget {
   verify_tls: boolean
   token_secret_set: boolean
   token_secret?: string
+  base_path?: string | null
+  paths?: string[]
+  keep?: number
+  require_mount?: boolean
 }
 
 interface BackupSettings {
@@ -132,7 +136,7 @@ const SECTIONS: SectionDef[] = [
   {
     id: 'backup',
     title: 'Backup',
-    description: 'Back up servers before patching and restore them if a patch cannot be rolled back. Proxmox VE with a Proxmox Backup Server storage is supported.',
+    description: 'Optional. Back up servers before patching so they can be restored if a patch cannot be rolled back. File backups copy selected paths to a folder on this host, normally an NFS share. Proxmox VE can back up whole VMs and containers instead.',
     render: (s, update) => <BackupSection settings={s} update={update} />,
   },
   {
@@ -1689,6 +1693,24 @@ function BackupSection({ settings, update }: { settings: Settings; update: Updat
         token_secret: '',
       },
     ])
+  const addFileTarget = () =>
+    setTargets([
+      ...b.targets,
+      {
+        id: `nfs-${Math.random().toString(36).slice(2, 8)}`,
+        name: `File backup ${b.targets.length + 1}`,
+        provider: 'nfs',
+        api_url: null,
+        token_id: null,
+        storage: null,
+        verify_tls: false,
+        token_secret_set: false,
+        base_path: '',
+        paths: [],
+        keep: 5,
+        require_mount: true,
+      },
+    ])
   const removeTarget = (id: string) => setTargets(b.targets.filter(t => t.id !== id))
 
   const test = async () => {
@@ -1717,10 +1739,10 @@ function BackupSection({ settings, update }: { settings: Settings; update: Updat
       </div>
 
       {b.targets.length === 0 && (
-        <p className="settings-help">No Proxmox VE servers added yet. Add one for each Proxmox host that runs your VMs.</p>
+        <p className="settings-help">No backup targets yet. Add a Proxmox VE server for VMs it runs, or a file target for servers that have no backup solution.</p>
       )}
 
-      {b.targets.map(t => (
+      {b.targets.filter(t => t.provider !== 'nfs').map(t => (
         <div key={t.id} className="settings-card">
           <div className="settings-row">
             <div className="settings-field">
@@ -1765,23 +1787,74 @@ function BackupSection({ settings, update }: { settings: Settings; update: Updat
         </div>
       ))}
 
+      {b.targets.filter(t => t.provider === 'nfs').map(t => (
+        <div key={t.id} className="settings-card">
+          <div className="settings-row">
+            <div className="settings-field">
+              <label>Name</label>
+              <input type="text" value={t.name} onChange={(e) => patchTarget(t.id, { name: e.target.value })} />
+            </div>
+            <div className="settings-field">
+              <label>Backup folder on this host</label>
+              <input type="text" placeholder="/mnt/jarn-backups" value={t.base_path || ''} onChange={(e) => patchTarget(t.id, { base_path: e.target.value })} />
+            </div>
+          </div>
+          <div className="settings-row">
+            <div className="settings-field">
+              <label>Backups kept per server</label>
+              <input type="number" min={1} max={365} value={t.keep ?? 5} onChange={(e) => patchTarget(t.id, { keep: Number(e.target.value) })} />
+            </div>
+            <div className="settings-field">
+              <label className="settings-toggle">
+                <input type="checkbox" checked={t.require_mount ?? true} onChange={(e) => patchTarget(t.id, { require_mount: e.target.checked })} />
+                <span>Require the folder to be a mounted share</span>
+              </label>
+            </div>
+          </div>
+          <div className="settings-field">
+            <label>Paths to back up on each server (one per line)</label>
+            <textarea
+              rows={5}
+              placeholder={'/etc\n/root\n/home'}
+              value={(t.paths || []).join('\n')}
+              onChange={(e) => patchTarget(t.id, { paths: e.target.value.split('\n') })}
+            />
+          </div>
+          <p className="settings-help">
+            Each server's files are copied over SSH into this folder. Mount an NFS export at that path on this host; with the
+            mount check on, a backup stops instead of filling this host's disk when the share is missing. Backups contain
+            password hashes and private keys, so only export the share to this host. Leave the paths empty to use the
+            defaults: /etc, /boot, /root, /home, /srv, /opt and /usr/local. Restores put back only these paths, not packages
+            or the kernel.
+          </p>
+          <div className="settings-field">
+            <button onClick={() => removeTarget(t.id)}>Remove this file target</button>
+          </div>
+        </div>
+      ))}
+
       <div className="settings-field">
         <button onClick={addTarget}>+ Add Proxmox server</button>
+        <button onClick={addFileTarget} style={{ marginLeft: 8 }}>+ Add file backup target (NFS share)</button>
         <button className="btn-save-settings" onClick={test} disabled={testing || b.targets.length === 0} style={{ marginLeft: 8 }}>
           {testing ? 'Testing…' : 'Test all connections'}
         </button>
         {testError && <p className="settings-help" style={{ color: '#c8514c' }}>{testError}</p>}
         {testResults && testResults.map((r: any) => (
           <p key={r.target} className="settings-help" style={{ color: r.ok ? '#3a9d6e' : '#c8514c' }}>
-            {r.name}: {r.ok ? (r.storage ? `connected to Proxmox VE ${r.pve_version}; storage '${r.storage}' accepts backups` : `connected to Proxmox VE ${r.pve_version}; storage taken from each VM's backup job`) : r.message}
+            {r.name}: {r.ok
+              ? (r.provider === 'nfs'
+                ? `folder ${r.base_path} is writable`
+                : (r.storage ? `connected to Proxmox VE ${r.pve_version}; storage '${r.storage}' accepts backups` : `connected to Proxmox VE ${r.pve_version}; storage taken from each VM's backup job`))
+              : r.message}
           </p>
         ))}
         <p className="settings-help">Save settings before testing. Tests use the saved values.</p>
       </div>
 
-      <h3 className="settings-subhead">Server to VM mapping</h3>
+      <h3 className="settings-subhead">Server backup sources</h3>
       <p className="settings-help">
-        Each server is backed up from the Proxmox VM or container it runs on. Pick the VM and its Proxmox server below.
+        Each server is backed up either from the Proxmox VM or container it runs on, or as files to a file target. Pick one below.
       </p>
       <BackupMappings />
     </>
@@ -1837,6 +1910,10 @@ export function AdminSettings() {
               storage: t.storage,
               verify_tls: t.verify_tls,
               token_secret: t.token_secret || null,
+              base_path: t.base_path || null,
+              paths: (t.paths || []).map(p => p.trim()).filter(Boolean),
+              keep: t.keep ?? 5,
+              require_mount: t.require_mount ?? true,
             })),
           },
           patching_config: settings.patching_config,

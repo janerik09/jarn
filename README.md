@@ -1,8 +1,8 @@
 # JÁRN
 
 JÁRN manages patching for Linux servers. It keeps an inventory of your servers, runs patch jobs with approval steps
-and staged rollouts, takes Proxmox backups before risky changes, checks compliance against common frameworks, and
-keeps an audit trail of what happened and who did it.
+and staged rollouts, can back up servers before risky changes, checks compliance against common frameworks, and
+keeps an audit trail of what happened and who did it. Backups are optional; see [Backups](#backups).
 
 Start with [GETTING_STARTED.md](GETTING_STARTED.md) if you are installing it. These guides cover the rest:
 
@@ -19,12 +19,13 @@ Start with [GETTING_STARTED.md](GETTING_STARTED.md) if you are installing it. Th
 - **Safety checks:** critical and kernel updates can require approval. Health checks run before and after patching,
   and a failed check triggers an automatic rollback. Application profiles, including Home Assistant Supervised, add
   their own checks.
-- **Distribution upgrades:** these need a backup first.
+- **Distribution upgrades:** these need a backup source configured first, a Proxmox target or a file target.
 - **Schedules:** recurring patch jobs and a nightly compliance run, both respecting maintenance windows.
 - **Compliance:** assessments against CIS, PCI DSS, HIPAA, SOC 2, ISO 27001 and NIST CSF. Reports export as PDF or
   CSV, and each one keeps its score history.
-- **Backups:** Proxmox VE with a Proxmox Backup Server storage. JÁRN only starts a backup when you ask for one, or
-  when a patch job needs it. Restores check the backup, the storage and the permissions before they stop anything.
+- **Backups (optional):** back up a server before patching, and restore it if the patch can't be rolled back. Choose
+  the source that fits each server: a file backup of selected paths, or a whole Proxmox VM. Patch jobs work without
+  either. See [Backups](#backups).
 - **Off-host copy:** database dumps and audit archives can be copied to another server over SFTP.
 - **Audit trail:** changes, sign-ins, refused actions and job steps, in a hash chain, with search, export and a
   timeline for each job.
@@ -66,7 +67,7 @@ Servers in a wave run at the same time, up to the maximum set in Admin Settings 
 4. A post-patch health check runs.
 5. If the install or the post-patch check fails and a rollback is possible, the old package versions are restored.
    If that also fails, the server is marked as needing a restore. If the job was set to back up first and restore on
-   failure, JÁRN restores the VM from that backup (see [Backups](#backups)).
+   failure, JÁRN restores the server from that backup (see [Backups](#backups)).
 
 Each server ends as `success`, `failed`, `rolled_back` or `skipped`. A `rolled_back` server was patched, the patch was
 reverted automatically, and it is back where it started. A `failed` server with a failed rollback keeps the error
@@ -157,7 +158,7 @@ python3 -c "import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).deco
 openssl rand -base64 24                                                    # POSTGRES_PASSWORD
 ```
 
-Everything else, including the Proxmox connection, notifications, web access, the off-host copy and users, is set in
+Everything else, including backup targets, notifications, web access, the off-host copy and users, is set in
 **Admin Settings** in the dashboard. Secrets entered there are stored encrypted.
 
 ## Architecture
@@ -205,15 +206,49 @@ Open `http://<host>/`. The first visit asks you to create the administrator acco
 
 ## Backups
 
-### Proxmox VE
+Backups are optional. JÁRN never needs one to patch a server, and you can use none, one or both kinds below. Pick the
+source for each server in **Admin Settings → Backup → Server backup sources**. Two things need a source: a patch job
+that is set to back up first, and a distribution upgrade, which won't start without one.
 
-Add a Proxmox target in **Admin Settings → Backup**, using an API token. The token needs the permissions the backup and
+JÁRN only starts a backup when you click **Back up now**, or when a patch job or distribution upgrade asks for one.
+It never runs backups on a schedule. Any schedule you use, such as your own backup software or Proxmox's backup jobs,
+is separate from JÁRN.
+
+### File backups to a share (NFS)
+
+For servers that have no backup solution, or that aren't virtual machines at all. JÁRN copies each server's chosen
+paths over SSH into a folder on the JÁRN host, normally an NFS export mounted there. Nothing needs to be installed on
+the managed server beyond `tar`.
+
+1. Export a share from your NAS to the JÁRN host only. Mount it on the host at a fixed path, for example
+   `/mnt/jarn-backups`, and add it to `/etc/fstab` so it survives a reboot.
+2. In `docker-compose.yml`, uncomment the `/mnt/jarn-backups` lines under `backend` and `worker`, then restart the stack.
+3. In **Admin Settings → Backup**, add a **file backup target**. Set the folder, how many backups to keep per server,
+   and the paths to back up. Leave the paths empty to use `/etc`, `/boot`, `/root`, `/home`, `/srv`, `/opt` and
+   `/usr/local`. Then choose **Test all connections**.
+4. Under **Server backup sources**, map each server to that file target.
+
+- The SSH login and `sudo` for each server are the ones JÁRN already uses for it. `tar` runs under `sudo`, so the
+  account needs that permission, with or without a password.
+- The folder must be a mounted share. If it isn't, the backup stops instead of filling this host's disk. Turn off
+  **Require the folder to be a mounted share** only for a local folder.
+- Each backup is written to a temporary file, checked as a valid gzip, and then given a SHA-256 checksum in a manifest.
+  Older backups are removed only after a new one has been verified, keeping the number you chose.
+- **Restore** checks the archive against its checksum and the server's `/var/tmp` for enough room. It copies the archive to
+  `/var/tmp` on the server, checks the checksum there, extracts it, and removes the copy. Nothing is extracted if a check fails.
+- A file restore puts back only the backed-up paths. It does not roll back packages or the kernel, and files created after
+  the backup are left in place. For a failed kernel update, use the server's own boot or snapshot tools.
+- Backups contain password hashes and private keys. Export the share to the JÁRN host only, and keep it off any
+  network that other people can read.
+
+### Proxmox VE (for virtual machines and containers)
+
+Use this when a server is a Proxmox VM or container and you want the whole machine restored, not just files. Add a
+Proxmox target in **Admin Settings → Backup**, using an API token. The token needs the permissions the backup and
 restore calls use. Restores also need `Datastore.AllocateSpace` on each storage they write to, and `SDN.Use` on the
 bridge the VM uses. The restore check reports any permission that's missing. Then map each server to its VM or
-container.
+container. JÁRN works with any storage the Proxmox backup jobs write to; Proxmox Backup Server is one option.
 
-- Backups are manual. JÁRN never runs a Proxmox backup on a schedule. Your Proxmox backup jobs handle the regular
-  backups, and JÁRN only starts one when you click the button or a patch job asks for it.
 - The storage for each VM comes from the enabled Datacenter backup job that covers it.
 - **Restore** runs a check before anything is stopped. It confirms the backup exists and can be read. It confirms each
   disk's storage exists, is active, accepts guest disks and has enough room. The current VM's disks count as free
@@ -239,7 +274,8 @@ Turn it on in **Admin Settings → Off-host copy**:
    Each upload is checked by size before it's moved into place. Old copies are only removed after every upload
    succeeds, and the newest copies of each kind are kept. **Copy now** runs it straight away.
 
-The copy only includes JÁRN's own database dumps and audit archives. Proxmox VM backups stay in Proxmox.
+The copy only includes JÁRN's own database dumps and audit archives. Backups of managed servers are not included;
+keep them where they are stored (a Proxmox server, or the file backup share).
 
 ## Audit trail
 

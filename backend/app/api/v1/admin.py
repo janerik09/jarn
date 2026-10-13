@@ -4,11 +4,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.database import get_db
 from app.models.settings import SystemSettings
-from app.services.backup_providers import targets_from_config
+from app.services.backup_providers import FILE_DEFAULT_KEEP, FILE_MAX_KEEP, targets_from_config, validate_file_paths
 from app.logging_config import get_logger
 from typing import List, Literal, Optional
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["admin"])
@@ -41,15 +41,33 @@ class GeneralConfig(BaseModel):
 
 
 class BackupTargetUpdate(BaseModel):
-    """One Proxmox VE endpoint. Leave token_secret empty to keep the stored secret for this target."""
+    """One backup target: a Proxmox VE endpoint, or a folder on this host (normally an NFS share) for file backups.
+
+    Leave token_secret empty to keep the stored secret for this target.
+    """
     id: str
     name: str
-    provider: Literal["proxmox"] = "proxmox"
-    api_url: Optional[str] = None  # e.g. https://pve1.example.com:8006
-    token_id: Optional[str] = None  # e.g. backup@pve!patchmanager
+    provider: Literal["proxmox", "nfs"] = "proxmox"
+    api_url: Optional[str] = None  # Proxmox: e.g. https://pve1.example.com:8006
+    token_id: Optional[str] = None  # Proxmox: e.g. backup@pve!patchmanager
     token_secret: Optional[str] = None
-    storage: Optional[str] = None  # Optional fallback storage; per-VM storage comes from Datacenter backup jobs
+    storage: Optional[str] = None  # Proxmox: optional fallback storage; per-VM storage comes from Datacenter backup jobs
     verify_tls: bool = False
+    base_path: Optional[str] = None  # NFS: folder on this host where backups are stored, e.g. /mnt/jarn-backups
+    paths: List[str] = []  # NFS: absolute paths on each server to back up; empty uses the defaults
+    keep: int = FILE_DEFAULT_KEEP  # NFS: backups kept per server
+    require_mount: bool = True  # NFS: refuse to write unless base_path is on a mounted share
+
+    @model_validator(mode="after")
+    def _check_provider_fields(self):
+        if self.provider == "nfs":
+            if not self.base_path or not self.base_path.startswith("/") or ".." in self.base_path.split("/"):
+                raise ValueError(f"{self.name}: the backup folder must be an absolute path without '..'")
+            if not 1 <= self.keep <= FILE_MAX_KEEP:
+                raise ValueError(f"{self.name}: keep must be between 1 and {FILE_MAX_KEEP}")
+            if self.paths:
+                self.paths = validate_file_paths(self.paths)
+        return self
 
 
 class BackupConfigUpdate(BaseModel):
@@ -105,6 +123,10 @@ def _public_backup(config: Optional[dict]) -> dict:
                 "storage": t.get("storage"),
                 "verify_tls": bool(t.get("verify_tls", False)),
                 "token_secret_set": bool(t.get("token_secret")),
+                "base_path": t.get("base_path"),
+                "paths": t.get("paths") or [],
+                "keep": int(t.get("keep") or FILE_DEFAULT_KEEP),
+                "require_mount": bool(t.get("require_mount", True)),
             }
             for t in targets_from_config(config)
         ],

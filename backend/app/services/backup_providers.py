@@ -1,16 +1,30 @@
 """
 Backup providers for pre-patch backups and restores.
 
-Proxmox VE (with a Proxmox Backup Server storage) is the first provider. Each managed server maps to a
-VM or container through metadata_["backup"] = {"node", "vmid", "type"}.
+Two kinds of backup source:
+
+- Proxmox VE (with a Proxmox Backup Server storage) backs up whole VMs and containers. Each managed server maps to
+  one through metadata_["backup"] = {"target", "node", "vmid", "type"}.
+- A file target (NFS share) backs up a server's configured paths as a tar.gz over SSH, and stores it in a folder
+  on this host, normally a mounted NFS export. Mapping: metadata_["backup"] = {"target", "type": "file"}.
 """
 
 import asyncio
+import gzip
+import hashlib
+import json
+import os
 import re
+import shlex
+import uuid
+import zlib
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
+from app.connectors.ssh import SSHConnector, pinned_host_key
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -378,6 +392,338 @@ class ProxmoxProvider:
                            details={"node": node, "vmid": vmid, "volid": volid})
 
 
+FILE_DEFAULT_PATHS = ["/etc", "/boot", "/root", "/home", "/srv", "/opt", "/usr/local"]
+FILE_DEFAULT_KEEP = 5
+FILE_MAX_KEEP = 365
+FILE_TRANSFER_TIMEOUT = 6 * 3600
+FILE_RESTORE_WARNING = (
+    "Only the backed-up paths are restored. Packages, the kernel and anything outside those paths are not rolled back, "
+    "and files created after the backup are left in place."
+)
+_SERVER_ID = re.compile(r"^[0-9a-fA-F-]{36}$")
+_FILE_VOLID = re.compile(r"^([0-9a-fA-F-]{36})/(\d{8}-\d{6})\.tar\.gz$")
+
+
+def validate_file_paths(paths: List[str]) -> List[str]:
+    """Absolute paths to back up. The root filesystem itself is refused, so a backup cannot silently cover the whole disk."""
+    cleaned = []
+    for raw in paths:
+        path = (raw or "").strip()
+        if not path:
+            continue
+        if not path.startswith("/") or ".." in path.split("/") or any(c in path for c in "\n\r\0"):
+            raise BackupError(f"Backup path '{path}' must be an absolute path without '..'")
+        normalized = "/" + "/".join(p for p in path.split("/") if p)
+        if normalized == "/":
+            raise BackupError("The whole filesystem cannot be a backup path; list the folders to back up instead")
+        if normalized not in cleaned:
+            cleaned.append(normalized)
+    if not cleaned:
+        raise BackupError("At least one path to back up is required")
+    return cleaned
+
+
+def _epoch(created_at: Optional[str]) -> Optional[float]:
+    try:
+        return datetime.fromisoformat(created_at).timestamp() if created_at else None
+    except ValueError:
+        return None
+
+
+def _sha256_of(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as source:
+        for chunk in iter(lambda: source.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+class FileProvider:
+    """Backs up a server's paths over SSH into a folder on this host, normally an NFS share mounted there.
+
+    Layout: <base>/<server id>/<YYYYmmdd-HHMMSS>.tar.gz with a .json manifest beside it. The manifest holds the
+    size and SHA-256 that restores check against. Nothing is installed on the managed server beyond tar, which the
+    server already has.
+    """
+
+    name = "nfs"
+    kind = "files"
+
+    def __init__(self, base_path: str, paths: Optional[List[str]] = None, keep: int = FILE_DEFAULT_KEEP,
+                 require_mount: bool = True):
+        self.base_path = base_path
+        self.paths = validate_file_paths(list(paths)) if paths else list(FILE_DEFAULT_PATHS)
+        self.keep = int(keep or FILE_DEFAULT_KEEP)
+        self.require_mount = bool(require_mount)
+
+    def root(self) -> Path:
+        base = Path(self.base_path)
+        if not base.is_dir():
+            raise BackupError(f"Backup folder {base} does not exist or is not a folder on this host")
+        if self.require_mount:
+            # Without this check a missing share would make the backup fill the local disk instead of failing
+            point = base
+            while not point.is_mount() and point != point.parent:
+                point = point.parent
+            if not point.is_mount() or point == Path("/"):
+                raise BackupError(
+                    f"{base} is not on a mounted share. Mount the NFS export there, or turn off "
+                    "'Require the share to be mounted' for a local folder"
+                )
+        return base
+
+    def _server_dir(self, server_id: str) -> Path:
+        if not _SERVER_ID.match(str(server_id or "")):
+            raise BackupError("Invalid server id")
+        return self.root() / str(server_id)
+
+    async def test(self) -> Dict[str, Any]:
+        root = self.root()
+        probe = root / f".jarn-write-test-{uuid.uuid4().hex}"
+        try:
+            probe.write_bytes(b"jarn")
+        except OSError as e:
+            raise BackupError(f"Cannot write to {root}: {e}")
+        finally:
+            probe.unlink(missing_ok=True)
+        return {"provider": self.name, "base_path": str(root), "keep": self.keep, "paths": self.paths}
+
+    async def backup(self, server: Dict[str, Any]) -> str:
+        from app.services import audit
+        server_id, ssh = server["id"], server["ssh"]
+        server_dir = self._server_dir(server_id)
+        server_dir.mkdir(parents=True, exist_ok=True)
+        os.chmod(server_dir, 0o700)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        final = server_dir / f"{stamp}.tar.gz"
+        partial = server_dir / f"{stamp}.tar.gz.partial"
+        if final.exists():
+            raise BackupError("A backup for this server was made in the same second; try again")
+        relative = " ".join(shlex.quote(p.lstrip("/")) for p in self.paths)
+        command = f"sudo tar --numeric-owner --one-file-system -czf - -C / {relative}"
+        details = {"server_id": server_id, "hostname": ssh["hostname"], "paths": self.paths, "archive": final.name}
+        await audit.record("files.backup.start", category="backup", resource_type="server", resource_id=server_id,
+                           details=details)
+
+        digest = hashlib.sha256()
+        written = 0
+        connector = SSHConnector(hostname=ssh["hostname"], username=ssh["username"], private_key=ssh.get("private_key"),
+                                 password=ssh.get("password"), port=ssh.get("port") or 22, host_key=ssh.get("host_key"))
+        returncode, stderr = 1, ""
+        try:
+            if not await connector.connect():
+                raise BackupError(connector.connect_error or "SSH connection failed")
+            with open(partial, "wb") as out:
+                def write_chunk(chunk: bytes) -> None:
+                    nonlocal written
+                    out.write(chunk)
+                    digest.update(chunk)
+                    written += len(chunk)
+                returncode, stderr = await asyncio.to_thread(
+                    connector.run_stream, command, download=write_chunk, timeout=FILE_TRANSFER_TIMEOUT)
+            if returncode not in (0, 1):  # GNU tar exits 1 when a file changed while it was read; the archive is still usable
+                raise BackupError(f"tar exited with status {returncode}: {stderr.strip()[-300:]}")
+            if written == 0:
+                raise BackupError("The archive from the server was empty")
+            with gzip.open(partial, "rb") as gz:
+                for _ in iter(lambda: gz.read(1 << 20), b""):
+                    pass
+        except BackupError as e:
+            partial.unlink(missing_ok=True)
+            await audit.record("files.backup.complete", category="backup", outcome="failure", resource_type="server",
+                               resource_id=server_id, reason=str(e), details=details)
+            raise
+        except (OSError, EOFError, zlib.error) as e:
+            partial.unlink(missing_ok=True)
+            reason = f"The archive is not valid gzip: {e}"
+            await audit.record("files.backup.complete", category="backup", outcome="failure", resource_type="server",
+                               resource_id=server_id, reason=reason, details=details)
+            raise BackupError(reason)
+        except Exception as e:
+            partial.unlink(missing_ok=True)
+            reason = f"Backup transfer failed: {e}"
+            await audit.record("files.backup.complete", category="backup", outcome="failure", resource_type="server",
+                               resource_id=server_id, reason=reason, details=details)
+            raise BackupError(reason)
+        finally:
+            await connector.disconnect()
+
+        os.chmod(partial, 0o600)
+        os.replace(partial, final)
+        manifest = {
+            "version": 1, "server_id": server_id, "hostname": ssh["hostname"],
+            "created_at": datetime.now(timezone.utc).isoformat(), "paths": self.paths,
+            "size_bytes": written, "sha256": digest.hexdigest(), "tar_status": returncode,
+            "warnings": stderr.strip()[-1000:] if returncode == 1 else "",
+        }
+        tmp_manifest = server_dir / f"{stamp}.json.tmp"
+        tmp_manifest.write_text(json.dumps(manifest, indent=2))
+        os.chmod(tmp_manifest, 0o600)
+        os.replace(tmp_manifest, server_dir / f"{stamp}.json")
+        pruned = self._prune(server_dir)
+        volid = f"{server_id}/{final.name}"
+        await audit.record("files.backup.complete", category="backup", resource_type="server", resource_id=server_id,
+                           details={**details, "size_bytes": written, "sha256": manifest["sha256"][:16],
+                                    "tar_status": returncode, "pruned": pruned})
+        return volid
+
+    def _prune(self, server_dir: Path) -> int:
+        """Keep the newest `keep` backups for a server. Runs only after a new backup has been verified and written."""
+        removed = 0
+        for manifest in sorted(server_dir.glob("*.json"), reverse=True)[self.keep:]:
+            (server_dir / f"{manifest.stem}.tar.gz").unlink(missing_ok=True)
+            manifest.unlink(missing_ok=True)
+            removed += 1
+        return removed
+
+    async def list_backups(self, server_id: str) -> List[Dict[str, Any]]:
+        server_dir = self._server_dir(server_id)
+        if not server_dir.is_dir():
+            return []
+        backups = []
+        for manifest_path in sorted(server_dir.glob("*.json"), reverse=True):
+            try:
+                manifest = json.loads(manifest_path.read_text())
+            except (OSError, ValueError):
+                continue
+            archive = server_dir / f"{manifest_path.stem}.tar.gz"
+            if archive.is_file():
+                backups.append({"volid": f"{server_id}/{archive.name}", "ctime": _epoch(manifest.get("created_at")),
+                                "size": manifest.get("size_bytes")})
+        return backups
+
+    def _locate(self, volid: str, server_id: str) -> Tuple[Path, Path]:
+        match = _FILE_VOLID.match(volid or "")
+        if not match:
+            raise BackupError("That is not a file backup identifier")
+        if match.group(1).lower() != str(server_id).lower():
+            raise BackupError("That backup belongs to a different server")
+        server_dir = self._server_dir(match.group(1))
+        return server_dir / f"{match.group(2)}.tar.gz", server_dir / f"{match.group(2)}.json"
+
+    async def restore_preflight(self, volid: str, server_id: str) -> Dict[str, Any]:
+        """Checks the archive without touching the server: it exists, its manifest is readable, and size and SHA-256 match."""
+        checks: List[Dict[str, Any]] = []
+        errors: List[str] = []
+        result: Dict[str, Any] = {
+            "ok": False, "volid": volid, "kind": "files", "target_storage": None, "backup_size": None,
+            "paths": [], "sha256": None, "disks": [], "storages": [], "candidates": [],
+            "checks": checks, "errors": errors, "warnings": [FILE_RESTORE_WARNING],
+        }
+
+        def check(name: str, ok: bool, detail: str) -> None:
+            checks.append({"name": name, "ok": ok, "detail": detail})
+            if not ok:
+                errors.append(detail)
+
+        try:
+            archive, manifest_path = self._locate(volid, server_id)
+        except BackupError as e:
+            check("backup_identifier", False, str(e))
+            return result
+        check("backup_identifier", True, "The backup belongs to this server")
+        if not archive.is_file():
+            check("backup_present", False, f"Backup {archive.name} was not found on the share")
+            return result
+        check("backup_present", True, f"Backup {archive.name} is on the share")
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (OSError, ValueError):
+            check("manifest_readable", False, "The backup's manifest is missing or unreadable, so the archive cannot be verified")
+            return result
+        check("manifest_readable", True, "The backup's manifest can be read")
+        result["paths"] = manifest.get("paths", [])
+        result["sha256"] = manifest.get("sha256")
+        size = archive.stat().st_size
+        result["backup_size"] = size
+        size_ok = size == manifest.get("size_bytes")
+        check("size_matches", size_ok,
+              f"Archive size {size} bytes matches its manifest" if size_ok
+              else f"Archive is {size} bytes but its manifest says {manifest.get('size_bytes')}")
+        if size_ok:
+            digest_ok = _sha256_of(archive) == manifest.get("sha256")
+            check("checksum_matches", digest_ok,
+                  "Archive checksum matches its manifest" if digest_ok
+                  else "Archive checksum does not match its manifest; the copy on the share may be damaged")
+        result["ok"] = not errors
+        return result
+
+    async def restore(self, server: Dict[str, Any], volid: str) -> None:
+        from app.services import audit
+        server_id, ssh = server["id"], server["ssh"]
+        details = {"server_id": server_id, "hostname": ssh["hostname"], "volid": volid}
+        await audit.record("files.restore.start", category="backup", resource_type="server", resource_id=server_id,
+                           details=details)
+        preflight = await self.restore_preflight(volid, server_id)
+        await audit.record("files.restore.preflight", category="backup", resource_type="server", resource_id=server_id,
+                           outcome="success" if preflight["ok"] else "failure",
+                           reason="; ".join(preflight["errors"]) or None, details=details)
+        if not preflight["ok"]:
+            raise BackupError("Restore blocked, nothing was changed: " + "; ".join(preflight["errors"]))
+        archive, _ = self._locate(volid, server_id)
+        size = preflight["backup_size"]
+        remote = f"/var/tmp/jarn-restore-{uuid.uuid4().hex}.tar.gz"
+        connector = SSHConnector(hostname=ssh["hostname"], username=ssh["username"], private_key=ssh.get("private_key"),
+                                 password=ssh.get("password"), port=ssh.get("port") or 22, host_key=ssh.get("host_key"))
+        try:
+            if not await connector.connect():
+                raise BackupError(connector.connect_error or "SSH connection failed")
+            space = await connector.execute_command("df -P -B1 /var/tmp | tail -1 | awk '{print $4}'", timeout=30)
+            free = int(space.stdout.strip()) if space.returncode == 0 and space.stdout.strip().isdigit() else None
+            if free is None or free < size * RESTORE_HEADROOM:
+                raise BackupError(f"Not enough free space in /var/tmp on the server; about {int(size * RESTORE_HEADROOM)} bytes are needed. Nothing was changed")
+            # The archive is staged on the server and checked there before anything is extracted
+            code, stderr = await asyncio.to_thread(
+                connector.run_stream, f"umask 077 && cat > {remote}", upload_path=str(archive), timeout=FILE_TRANSFER_TIMEOUT)
+            if code != 0:
+                raise BackupError(f"Could not send the archive to the server: {stderr.strip()[-300:]}")
+            verify = await connector.execute_command(
+                f"echo {shlex.quote(preflight['sha256'] + '  ' + remote)} | sha256sum -c -", timeout=FILE_TRANSFER_TIMEOUT)
+            if verify.returncode != 0:
+                raise BackupError("The archive on the server does not match its checksum, so nothing was extracted")
+            code, stderr = await asyncio.to_thread(
+                connector.run_stream, f"sudo tar --numeric-owner -xzpf {remote} -C /", timeout=FILE_TRANSFER_TIMEOUT)
+            if code != 0:
+                raise BackupError(f"Extracting the archive failed with status {code}. Some files may already be restored, "
+                                  f"so check the server before continuing. Cause: {stderr.strip()[-300:]}")
+        except BackupError as e:
+            await audit.record("files.restore.complete", category="backup", outcome="failure", resource_type="server",
+                               resource_id=server_id, reason=str(e), details=details)
+            raise
+        except Exception as e:
+            reason = f"Restore failed: {e}"
+            await audit.record("files.restore.complete", category="backup", outcome="failure", resource_type="server",
+                               resource_id=server_id, reason=reason, details=details)
+            raise BackupError(reason)
+        finally:
+            try:
+                if connector.connected:
+                    await connector.execute_command(f"rm -f {remote}", timeout=30)
+            finally:
+                await connector.disconnect()
+        await audit.record("files.restore.complete", category="backup", resource_type="server", resource_id=server_id,
+                           details=details)
+
+
+def server_ref(server_id: Any, hostname: str, ip: Any, port: Any, credentials: Optional[Dict[str, Any]],
+               metadata: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """What a backup needs to know about a server: its id, its mapping metadata and how to reach it over SSH."""
+    creds = dict(credentials or {})
+    meta = dict(metadata or {})
+    return {
+        "id": str(server_id),
+        "metadata": meta,
+        "ssh": {
+            "hostname": str(ip) if ip else hostname,
+            "username": creds.get("username"),
+            "private_key": creds.get("private_key"),
+            "password": creds.get("password"),
+            "port": int(port) if port else 22,
+            "host_key": pinned_host_key(meta),
+        },
+    }
+
+
 def targets_from_config(config: Dict[str, Any]) -> List[Dict[str, Any]]:
     if config and config.get("targets") is not None:
         return list(config["targets"])
@@ -395,7 +741,8 @@ def targets_from_config(config: Dict[str, Any]) -> List[Dict[str, Any]]:
     return []
 
 
-def provider_from_config(config: Dict[str, Any], target_id: Optional[str] = None) -> ProxmoxProvider:
+def provider_from_config(config: Dict[str, Any], target_id: Optional[str] = None):
+    """The provider for a configured target: ProxmoxProvider or FileProvider, depending on the target's provider."""
     if not config or not config.get("enabled"):
         raise BackupError("Backup is not enabled")
     targets = targets_from_config(config)
@@ -407,6 +754,15 @@ def provider_from_config(config: Dict[str, Any], target_id: Optional[str] = None
         target = next((t for t in targets if t.get("id") == target_id), None)
         if target is None:
             raise BackupError(f"Backup target '{target_id}' is not configured")
+    if target.get("provider") == "nfs":
+        if not target.get("base_path"):
+            raise BackupError(f"Backup target '{target.get('name', target.get('id'))}' needs a folder to store backups in")
+        return FileProvider(
+            base_path=target["base_path"],
+            paths=target.get("paths") or None,
+            keep=int(target.get("keep") or FILE_DEFAULT_KEEP),
+            require_mount=bool(target.get("require_mount", True)),
+        )
     if target.get("provider") != "proxmox":
         raise BackupError(f"Unsupported backup provider: {target.get('provider')}")
     # storage is an optional fallback; the storage used for each VM comes from its Datacenter backup job
@@ -422,8 +778,47 @@ def provider_from_config(config: Dict[str, Any], target_id: Optional[str] = None
     )
 
 
+def provider_for_mapping(config: Dict[str, Any], mapping: Dict[str, Any]):
+    """The provider a server's mapping points at. A mapping whose kind no longer matches its target must be redone."""
+    provider = provider_from_config(config, mapping.get("target"))
+    is_file = mapping.get("type") == "file"
+    if is_file != isinstance(provider, FileProvider):
+        raise BackupError("This server's backup target changed kind; map the server to its backup source again in Admin Settings")
+    return provider
+
+
 def mapping_from_server(metadata: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     mapping = (metadata or {}).get("backup")
-    if not mapping or not mapping.get("node") or not mapping.get("vmid") or not mapping.get("type"):
+    if not mapping:
+        return None
+    if mapping.get("type") == "file":
+        return mapping if mapping.get("target") else None
+    # Proxmox mappings from before file targets existed may have no target; the single configured target is used then
+    if not mapping.get("node") or not mapping.get("vmid") or not mapping.get("type"):
         return None
     return mapping
+
+
+async def take_server_backup(config: Dict[str, Any], server: Dict[str, Any]) -> str:
+    """Backs up a server through its mapped backup source. Returns a reference that restore_server_from_backup takes."""
+    mapping = mapping_from_server(server["metadata"])
+    if not mapping:
+        raise BackupError("Server is not mapped to a backup source in Admin Settings")
+    provider = provider_for_mapping(config, mapping)
+    if isinstance(provider, FileProvider):
+        return await provider.backup(server)
+    return await provider.backup(mapping["node"], int(mapping["vmid"]))
+
+
+async def restore_server_from_backup(config: Dict[str, Any], server: Dict[str, Any], volid: str,
+                                     target_storage: Optional[str] = None) -> None:
+    mapping = mapping_from_server(server["metadata"])
+    if not mapping:
+        raise BackupError("Server is not mapped to a backup source in Admin Settings")
+    provider = provider_for_mapping(config, mapping)
+    if isinstance(provider, FileProvider):
+        if target_storage:
+            raise BackupError("File backups are restored in place; a target storage does not apply")
+        await provider.restore(server, volid)
+        return
+    await provider.restore(mapping["node"], mapping["type"], int(mapping["vmid"]), volid, target_storage)

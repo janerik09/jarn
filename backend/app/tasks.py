@@ -11,7 +11,9 @@ from app.connectors import SSHConnector
 from app.connectors.ssh import pinned_host_key
 from app.logging_config import get_logger
 from app.services.scan_snapshot import build_snapshot
-from app.services.backup_providers import BackupError, provider_from_config, mapping_from_server
+from app.services.backup_providers import (
+    BackupError, restore_server_from_backup, server_ref, take_server_backup,
+)
 from app.services.runner_limits import concurrency_limit, connect_with_retry, run_limited
 from app.services.job_rollback import plan_job_rollback
 
@@ -315,7 +317,7 @@ async def _execute_on_server(execution_id: str, job_id: str, kubernetes_node: bo
             if job.backup_before:
                 started = datetime.utcnow().isoformat()
                 try:
-                    backup_ref = await take_server_backup(server.metadata_, await _backup_config(db))
+                    backup_ref = await take_server_backup(await _backup_config(db), server_ref_of(server))
                     backup_phases.append({"name": "pre_patch_backup", "status": "success", "timestamp": started,
                                           "output": backup_ref, "error": ""})
                 except BackupError as e:
@@ -342,7 +344,7 @@ async def _execute_on_server(execution_id: str, job_id: str, kubernetes_node: bo
             if backup_ref and job.restore_on_failure and not patch_result["success"] and patch_result.get("needs_restore"):
                 started = datetime.utcnow().isoformat()
                 try:
-                    await restore_server_from_backup(server.metadata_, await _backup_config(db), backup_ref)
+                    await restore_server_from_backup(await _backup_config(db), server_ref_of(server), backup_ref)
                     phases.append({"name": "restore_from_backup", "status": "success", "timestamp": started,
                                    "output": backup_ref, "error": ""})
                     patch_result["error"] = f"{patch_result.get('error', '')} (server restored from {backup_ref})"
@@ -404,21 +406,8 @@ async def _backup_config(db: AsyncSession) -> dict:
     return dict(row.backup_config or {}) if row else {}
 
 
-async def take_server_backup(metadata: Optional[dict], config: dict) -> str:
-    mapping = mapping_from_server(metadata)
-    if not mapping:
-        raise BackupError("Server is not mapped to a Proxmox VM or container")
-    provider = provider_from_config(config, mapping.get("target"))
-    return await provider.backup(mapping["node"], int(mapping["vmid"]))
-
-
-async def restore_server_from_backup(metadata: Optional[dict], config: dict, volid: str,
-                                     target_storage: Optional[str] = None) -> None:
-    mapping = mapping_from_server(metadata)
-    if not mapping:
-        raise BackupError("Server is not mapped to a Proxmox VM or container")
-    provider = provider_from_config(config, mapping.get("target"))
-    await provider.restore(mapping["node"], mapping["type"], int(mapping["vmid"]), volid, target_storage)
+def server_ref_of(server) -> dict:
+    return server_ref(server.id, server.hostname, server.ip_address, server.port, server.credentials, server.metadata_)
 
 
 async def refresh_pending_count(server_id: str) -> None:
@@ -1092,6 +1081,7 @@ async def async_execute_distro_upgrade(server_id: str, target_version: str, ackn
             logger.error("distro_upgrade_server_not_found", server_id=server_id)
             return {"success": False, "error": "Server not found"}
         server_info = {
+            "id": str(server.id),
             "hostname": server.hostname,
             "ip": str(server.ip_address) if server.ip_address else None,
             "os_type": server.os_type.value,
@@ -1194,7 +1184,9 @@ async def async_execute_distro_upgrade(server_id: str, target_version: str, ackn
     try:
         async with AsyncSessionLocal() as db:
             config = await _backup_config(db)
-        backup_ref = await take_server_backup(server_info["metadata"], config)
+        backup_ref = await take_server_backup(config, server_ref(
+            server_info["id"], server_info["hostname"], server_info["ip"], server_info["port"],
+            server_info["credentials"], server_info["metadata"]))
         phases.append({"name": "pre_upgrade_backup", "status": "success", "timestamp": started,
                        "output": backup_ref, "error": ""})
     except BackupError as e:
@@ -1455,9 +1447,9 @@ def run_manual_restore(self, server_id: str, volid: str, target_storage: Optiona
 async def async_manual_backup(server_id: str) -> dict:
     async with AsyncSessionLocal() as db:
         server = (await db.execute(select(Server).where(Server.id == server_id))).scalar_one()
-        metadata = dict(server.metadata_ or {})
+        ref = server_ref_of(server)
         config = await _backup_config(db)
-    volid = await take_server_backup(metadata, config)
+    volid = await take_server_backup(config, ref)
     async with AsyncSessionLocal() as db:
         server = (await db.execute(select(Server).where(Server.id == server_id))).scalar_one()
         server.metadata_ = {**(server.metadata_ or {}),
@@ -1470,13 +1462,13 @@ async def async_manual_backup(server_id: str) -> dict:
 async def async_manual_restore(server_id: str, volid: str, target_storage: Optional[str] = None) -> dict:
     async with AsyncSessionLocal() as db:
         server = (await db.execute(select(Server).where(Server.id == server_id))).scalar_one()
-        metadata = dict(server.metadata_ or {})
+        ref = server_ref_of(server)
         config = await _backup_config(db)
     try:
-        await restore_server_from_backup(metadata, config, volid, target_storage)
+        await restore_server_from_backup(config, ref, volid, target_storage)
     except Exception as e:
         from app.services import notify
-        await notify.send("restore_failed", f"Restore failed: {metadata.get('backup', {}).get('target', 'server')}",
+        await notify.send("restore_failed", f"Restore failed: {ref['metadata'].get('backup', {}).get('target', 'server')}",
                           str(e))
         raise
     logger.info("manual_restore_completed", server_id=server_id, volid=volid)
