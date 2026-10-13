@@ -56,6 +56,7 @@ function App() {
   const [currentView, setCurrentView] = useState<ViewType>('dashboard')
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null)
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null)
+  const [createJobServers, setCreateJobServers] = useState<string[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   useEffect(() => {
@@ -117,6 +118,7 @@ function App() {
                   key={item.id}
                   className={`nav-item ${currentView === item.id ? 'active' : ''}`}
                   onClick={() => {
+                    if (item.id === 'create-job') setCreateJobServers([])
                     setCurrentView(item.id)
                     setSelectedJobId(null)
                   }}
@@ -137,6 +139,7 @@ function App() {
                   key={item.id}
                   className={`nav-item ${currentView === item.id ? 'active' : ''}`}
                   onClick={() => {
+                    if (item.id === 'create-job') setCreateJobServers([])
                     setCurrentView(item.id)
                     setSelectedJobId(null)
                   }}
@@ -166,6 +169,7 @@ function App() {
           {currentView === 'dashboard' && (
             <Dashboard
               onNavigate={(view) => {
+                if (view === 'create-job') setCreateJobServers([])
                 setCurrentView(view)
                 setSelectedJobId(null)
               }}
@@ -186,7 +190,14 @@ function App() {
           )}
 
           {currentView === 'server-detail' && selectedServerId && (
-            <ServerDetail serverId={selectedServerId} onBack={() => setCurrentView('servers')} />
+            <ServerDetail
+              serverId={selectedServerId}
+              onBack={() => setCurrentView('servers')}
+              onCreateJob={(id) => {
+                setCreateJobServers([id])
+                setCurrentView('create-job')
+              }}
+            />
           )}
 
           {currentView === 'patch-groups' && (
@@ -206,7 +217,9 @@ function App() {
                 <p>Deploy patches to your infrastructure</p>
               </div>
               <JobCreate
+                initialServerIds={createJobServers}
                 onJobCreated={() => {
+                  setCreateJobServers([])
                   setCurrentView('jobs')
                 }}
               />

@@ -578,79 +578,90 @@ function NotificationsSection() {
 
   return (
     <div>
-      <div className="settings-card">
-        <h3>Email</h3>
-        <p className="settings-help">
-          Status: {emailConfigured ? `Configured (${smtp?.host})` : 'Not configured'}
+      <div className="sso-header">
+        <p>
+          Email: {emailConfigured ? `set up through ${smtp?.host}` : 'not set up'}. Webhook: {configured ? 'set up' : 'not set up'}.
         </p>
-        <div className="settings-field">
-          <label>Provider</label>
-          <select value={preset} onChange={(e) => applyPreset(e.target.value)} className="form-input">
-            {EMAIL_PRESETS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-          </select>
+      </div>
+
+      <div className="sso-section">
+        <h4>Email</h4>
+        <p>Sent for finished or failed jobs, skipped scheduled runs, platform problems, and certificates that are about to expire.</p>
+        <div className="sso-tiles" style={{ marginBottom: 10 }}>
+          {EMAIL_PRESETS.map(p => (
+            <button key={p.id} type="button" className="sso-tile" onClick={() => applyPreset(p.id)}
+              style={{ borderColor: preset === p.id ? '#4a8fd4' : undefined }}>
+              {p.label}
+            </button>
+          ))}
         </div>
-        <p className="settings-help">{activePreset.help}</p>
-        <div className="settings-field">
-          <label>SMTP server</label>
-          <input type="text" value={smtp?.host ?? ''} onChange={(e) => setSmtp({ ...(smtp as SmtpView), host: e.target.value })} placeholder="smtp.example.com" />
+        <p className="sso-hint" style={{ marginBottom: 12 }}>{activePreset.help}</p>
+        <div className="sso-grid">
+          <div>
+            <label>SMTP server</label>
+            <input type="text" value={smtp?.host ?? ''} onChange={(e) => setSmtp({ ...(smtp as SmtpView), host: e.target.value })} placeholder="smtp.example.com" />
+          </div>
+          <div>
+            <label>Port</label>
+            <input type="number" value={smtp?.port ?? 587} onChange={(e) => setSmtp({ ...(smtp as SmtpView), port: Number(e.target.value) })} />
+          </div>
+          <div className="wide sso-toggles">
+            <label className="settings-toggle">
+              <input type="checkbox" checked={smtp?.starttls ?? true} onChange={(e) => setSmtp({ ...(smtp as SmtpView), starttls: e.target.checked })} />
+              Use STARTTLS (recommended on port 587)
+            </label>
+          </div>
+          <div>
+            <label>User name</label>
+            <input type="text" value={smtp?.username ?? ''} onChange={(e) => setSmtp({ ...(smtp as SmtpView), username: e.target.value })} placeholder="you@example.com" />
+          </div>
+          <div>
+            <label>Password or app password</label>
+            <input type="password" value={smtpPassword} onChange={(e) => setSmtpPassword(e.target.value)}
+              placeholder={smtp?.password_set ? 'Saved, leave blank to keep' : 'Enter the password'} />
+          </div>
+          <div>
+            <label>From address</label>
+            <input type="text" value={smtp?.from_address ?? ''} onChange={(e) => setSmtp({ ...(smtp as SmtpView), from_address: e.target.value })} placeholder="jarn@example.com" />
+          </div>
+          <div>
+            <label>Send to</label>
+            <input type="text" value={smtp?.to ?? ''} onChange={(e) => setSmtp({ ...(smtp as SmtpView), to: e.target.value })} placeholder="ops@example.com" />
+            <div className="sso-hint">Separate several addresses with commas.</div>
+          </div>
         </div>
-        <div className="settings-field">
-          <label>Port</label>
-          <input type="number" value={smtp?.port ?? 587} onChange={(e) => setSmtp({ ...(smtp as SmtpView), port: Number(e.target.value) })} />
-        </div>
-        <label className="settings-toggle">
-          <input type="checkbox" checked={smtp?.starttls ?? true} onChange={(e) => setSmtp({ ...(smtp as SmtpView), starttls: e.target.checked })} />
-          Use STARTTLS (recommended; port 587)
-        </label>
-        <div className="settings-field">
-          <label>Username</label>
-          <input type="text" value={smtp?.username ?? ''} onChange={(e) => setSmtp({ ...(smtp as SmtpView), username: e.target.value })} placeholder="you@gmail.com" />
-        </div>
-        <div className="settings-field">
-          <label>Password or app password</label>
-          <input
-            type="password"
-            value={smtpPassword}
-            onChange={(e) => setSmtpPassword(e.target.value)}
-            placeholder={smtp?.password_set ? 'Saved (leave blank to keep)' : 'Enter the app password'}
-          />
-        </div>
-        <div className="settings-field">
-          <label>From address</label>
-          <input type="text" value={smtp?.from_address ?? ''} onChange={(e) => setSmtp({ ...(smtp as SmtpView), from_address: e.target.value })} placeholder="jarn@example.com" />
-        </div>
-        <div className="settings-field">
-          <label>Send to (comma separated)</label>
-          <input type="text" value={smtp?.to ?? ''} onChange={(e) => setSmtp({ ...(smtp as SmtpView), to: e.target.value })} placeholder="ops@example.com" />
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="sso-actions">
           <button className="btn-save-settings" onClick={() => saveEmail(false)} disabled={busy || !smtp?.host || !smtp?.from_address || !smtp?.to}>Save email</button>
           <button className="btn-cancel" onClick={() => saveEmail(true)} disabled={busy || !emailConfigured}>Remove email</button>
         </div>
       </div>
 
-      <div className="settings-card">
-        <h3>Webhook</h3>
-        <p className="settings-help">
-          Sends a short message to Slack, Microsoft Teams or any endpoint that accepts incoming webhooks. The URL is
-          stored encrypted and is not shown again after saving.
-        </p>
-        <p className="settings-help">Status: {configured === null ? '…' : configured ? 'Webhook configured' : 'Not configured'}</p>
-        <div className="settings-field">
-          <label>Webhook URL</label>
-          <input type="text" placeholder="https://hooks.example.com/…" value={url} onChange={(e) => setUrl(e.target.value)} />
+      <div className="sso-section">
+        <h4>Webhook</h4>
+        <p>Posts a short message to Slack, Microsoft Teams or any endpoint that accepts incoming webhooks. The URL is stored encrypted and isn't shown again after you save it.</p>
+        <div className="sso-grid">
+          <div className="wide">
+            <label>Webhook URL</label>
+            <input type="text" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://hooks.example.com/…" />
+            <div className="sso-hint">{configured === null ? 'Checking…' : configured ? 'A webhook is set up. Enter a new URL to replace it.' : 'No webhook is set up yet.'}</div>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="sso-actions">
           <button className="btn-save-settings" onClick={() => saveWebhook(false)} disabled={busy || !url.trim()}>Save webhook</button>
           <button className="btn-cancel" onClick={() => saveWebhook(true)} disabled={busy || !configured}>Remove webhook</button>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button className="btn-test" onClick={test} disabled={busy || (!configured && !emailConfigured)}>Send test message</button>
+      <div className="sso-section">
+        <h4>Test</h4>
+        <p>Sends a test message to each channel that is set up.</p>
+        <div className="sso-actions" style={{ marginTop: 0 }}>
+          <button className="btn-test" onClick={test} disabled={busy || (!configured && !emailConfigured)}>Send test message</button>
+        </div>
       </div>
+
       {message && (
-        <p className="settings-help" style={{ color: message.ok ? 'var(--success)' : 'var(--error)' }}>{message.text}</p>
+        <p className="sso-message" style={{ color: message.ok ? 'var(--success)' : 'var(--error)', marginTop: 8 }}>{message.text}</p>
       )}
     </div>
   )

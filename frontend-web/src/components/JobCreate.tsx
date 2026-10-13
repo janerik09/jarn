@@ -22,15 +22,17 @@ interface Patch {
 
 interface JobCreateProps {
   onJobCreated?: (jobId: string) => void
+  // Servers to select when the wizard opens, for example from a server's own page
+  initialServerIds?: string[]
 }
 
 type Step = 1 | 2 | 3 | 4 | 5
 
-export function JobCreate({ onJobCreated }: JobCreateProps) {
+export function JobCreate({ onJobCreated, initialServerIds }: JobCreateProps) {
   const [currentStep, setCurrentStep] = useState<Step>(1)
   const [servers, setServers] = useState<Server[]>([])
   const [allPatches, setAllPatches] = useState<Record<string, Patch[]>>({})
-  const [selectedServers, setSelectedServers] = useState<Set<string>>(new Set())
+  const [selectedServers, setSelectedServers] = useState<Set<string>>(() => new Set(initialServerIds ?? []))
   const [selectedPatches, setSelectedPatches] = useState<Set<string>>(new Set())
   const [jobName, setJobName] = useState('')
   const [priority, setPriority] = useState('medium')

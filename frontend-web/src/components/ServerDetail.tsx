@@ -47,7 +47,7 @@ type Tab = 'overview' | 'applications' | 'services' | 'containers' | 'patching'
 
 const base = () => `/api/v1`
 
-export function ServerDetail({ serverId, onBack }: { serverId: string; onBack: () => void }) {
+export function ServerDetail({ serverId, onBack, onCreateJob }: { serverId: string; onBack: () => void; onCreateJob?: (serverId: string) => void }) {
   const [detail, setDetail] = useState<Detail | null>(null)
   const [tab, setTab] = useState<Tab>('overview')
   const [error, setError] = useState<string | null>(null)
@@ -173,6 +173,7 @@ export function ServerDetail({ serverId, onBack }: { serverId: string; onBack: (
           <span className="sd-meta">{detail.ip_address || 'no IP'} · {detail.os_type} {detail.os_version || ''}</span>
         </div>
         <button onClick={refreshInventory} disabled={refreshing}>{refreshing ? 'Collecting…' : '↻ Refresh inventory'}</button>
+        {onCreateJob && <button className="btn-start" onClick={() => onCreateJob(serverId)}>Create job for this server</button>}
       </div>
 
       {message && <div className="sd-message">{message}</div>}
