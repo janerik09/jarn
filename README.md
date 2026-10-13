@@ -322,6 +322,3 @@ development setup.
 
 JÁRN is free software under the [Apache License 2.0](LICENSE). You can use, change and redistribute it, including in
 closed-source products, as long as you keep the licence and copyright notices.
-
-JÁRN is free to use. If it saves you time, you can support its development through
-[GitHub Sponsors](https://github.com/sponsors/janerik09). Donations are optional and don't unlock anything.
