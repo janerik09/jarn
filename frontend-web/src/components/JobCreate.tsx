@@ -29,7 +29,8 @@ interface JobCreateProps {
 type Step = 1 | 2 | 3 | 4 | 5
 
 export function JobCreate({ onJobCreated, initialServerIds }: JobCreateProps) {
-  const [currentStep, setCurrentStep] = useState<Step>(1)
+  // Opened from a server's page: the server is already selected, so start on the patch step
+  const [currentStep, setCurrentStep] = useState<Step>(initialServerIds && initialServerIds.length > 0 ? 2 : 1)
   const [servers, setServers] = useState<Server[]>([])
   const [allPatches, setAllPatches] = useState<Record<string, Patch[]>>({})
   const [selectedServers, setSelectedServers] = useState<Set<string>>(() => new Set(initialServerIds ?? []))

@@ -159,6 +159,13 @@
   color: #4a8fd4;
 }
 
+/* Sits at the right end of the tab row, next to Overview and Applications */
+.sd-tabs .sd-tab-action {
+  margin-left: auto;
+  border-color: #4a8fd4;
+  color: #4a8fd4;
+}
+
 .sd-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));

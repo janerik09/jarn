@@ -173,7 +173,6 @@ export function ServerDetail({ serverId, onBack, onCreateJob }: { serverId: stri
           <span className="sd-meta">{detail.ip_address || 'no IP'} · {detail.os_type} {detail.os_version || ''}</span>
         </div>
         <button onClick={refreshInventory} disabled={refreshing}>{refreshing ? 'Collecting…' : '↻ Refresh inventory'}</button>
-        {onCreateJob && <button className="btn-start" onClick={() => onCreateJob(serverId)}>Create job for this server</button>}
       </div>
 
       {message && <div className="sd-message">{message}</div>}
@@ -212,6 +211,9 @@ export function ServerDetail({ serverId, onBack, onCreateJob }: { serverId: stri
         {tabs.map(t => (
           <button key={t.id} className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>{t.label}</button>
         ))}
+        {onCreateJob && (
+          <button className="sd-tab-action" onClick={() => onCreateJob(serverId)}>+ Create job</button>
+        )}
       </div>
 
       {tab === 'overview' && (
