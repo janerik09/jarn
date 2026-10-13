@@ -1683,6 +1683,31 @@ function KubernetesSection({ settings, update }: { settings: Settings; update: U
   )
 }
 
+function Collapsible({ title, label, summary, defaultOpen = false, actions, children }: {
+  title: ReactNode
+  label?: string
+  summary?: ReactNode
+  defaultOpen?: boolean
+  actions?: ReactNode
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="settings-card collapsible">
+      <div className="collapsible-head">
+        <button className="collapsible-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+          <span className="collapsible-chevron" aria-hidden="true">{open ? '▾' : '▸'}</span>
+          {label && <span className="target-type">{label}</span>}
+          <strong>{title}</strong>
+          {summary && <span className="settings-help">{summary}</span>}
+        </button>
+        {actions}
+      </div>
+      {open && <div className="collapsible-body">{children}</div>}
+    </div>
+  )
+}
+
 function BackupSection({ settings, update }: { settings: Settings; update: Update }) {
   const b = settings.backup
   const [testResults, setTestResults] = useState<any[] | null>(null)
@@ -1744,11 +1769,14 @@ function BackupSection({ settings, update }: { settings: Settings; update: Updat
   }
 
   const renderProxmox = (t: BackupTarget) => (
-    <div key={t.id} className="settings-card">
-      <div className="settings-card-head">
-        <h3><span className="target-type">Proxmox VE</span> {t.name}</h3>
-        <button onClick={() => removeTarget(t.id)}>Remove</button>
-      </div>
+    <Collapsible
+      key={t.id}
+      label="Proxmox VE"
+      title={t.name}
+      summary={t.api_url || 'not set up yet'}
+      defaultOpen={!t.api_url}
+      actions={<button onClick={() => removeTarget(t.id)}>Remove</button>}
+    >
       <div className="settings-row">
         <div className="settings-field">
           <label>Name</label>
@@ -1782,15 +1810,18 @@ function BackupSection({ settings, update }: { settings: Settings; update: Updat
         <input type="checkbox" checked={t.verify_tls} onChange={(e) => patchTarget(t.id, { verify_tls: e.target.checked })} />
         <span>Verify TLS certificate</span>
       </label>
-    </div>
+    </Collapsible>
   )
 
   const renderFiles = (t: BackupTarget) => (
-    <div key={t.id} className="settings-card">
-      <div className="settings-card-head">
-        <h3><span className="target-type">File backup</span> {t.name}</h3>
-        <button onClick={() => removeTarget(t.id)}>Remove</button>
-      </div>
+    <Collapsible
+      key={t.id}
+      label="File backup"
+      title={t.name}
+      summary={t.base_path || 'folder not set yet'}
+      defaultOpen={!t.base_path}
+      actions={<button onClick={() => removeTarget(t.id)}>Remove</button>}
+    >
       <div className="settings-row">
         <div className="settings-field">
           <label>Name</label>
@@ -1829,7 +1860,7 @@ function BackupSection({ settings, update }: { settings: Settings; update: Updat
         hashes and private keys, so only export the share to this host. A restore puts back only these paths, not
         packages or the kernel.
       </p>
-    </div>
+    </Collapsible>
   )
 
   return (
@@ -1881,10 +1912,12 @@ function BackupSection({ settings, update }: { settings: Settings; update: Updat
       ))}
 
       <h3 className="settings-subhead">Server backup sources</h3>
-      <p className="settings-help" style={{ marginBottom: 12 }}>
-        Choose where each server is backed up from: its file backup target, or the Proxmox guest it runs as.
-      </p>
-      <BackupMappings />
+      <Collapsible title="Servers" summary="choose where each server is backed up from">
+        <p className="settings-help" style={{ marginBottom: 12 }}>
+          Each server is backed up from its file backup target, or from the Proxmox guest it runs as.
+        </p>
+        <BackupMappings />
+      </Collapsible>
     </>
   )
 }

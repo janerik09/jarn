@@ -311,3 +311,46 @@
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
+
+/* Cards that show a summary line and open to reveal their fields */
+.collapsible-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.collapsible-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  color: #d5dbe3;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.collapsible-toggle strong {
+  color: #d5dbe3;
+  font-weight: 600;
+}
+
+.collapsible-toggle .settings-help {
+  overflow-wrap: anywhere;
+}
+
+.collapsible-chevron {
+  color: #4a8fd4;
+  width: 12px;
+}
+
+.collapsible-body {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(34, 42, 53, 0.15);
+}
