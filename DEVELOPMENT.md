@@ -144,7 +144,8 @@ name, take the category from `audit.category_for`, and only put non-secret detai
 ## Troubleshooting
 
 - **Backend changes aren't showing up.** In production, rebuild the image with
-  `docker compose up -d --build backend worker beat`. The development overlay reloads on its own.
+  `docker compose up -d --build backend worker beat` for backend changes, and `docker compose up -d --build web` for
+  frontend changes. The development overlay reloads on its own.
 - **Worker tasks don't run.** Check `docker compose logs worker`, and check that Redis is healthy.
 - **A migration fails at startup.** `docker compose logs backend` shows the Alembic error. Fix the revision and
   restart. Don't edit `alembic_version` by hand.

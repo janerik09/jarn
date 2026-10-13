@@ -10,6 +10,8 @@ Start with [GETTING_STARTED.md](GETTING_STARTED.md) if you are installing it. Th
 - [SSO.md](SSO.md): signing in with Entra ID, Okta, Google, Keycloak, or Active Directory and LDAP
 - [NETWORK_ACCESS.md](NETWORK_ACCESS.md): ports, HTTPS, and firewalls
 - [DEVELOPMENT.md](DEVELOPMENT.md): the development setup, tests and database migrations
+- [CONTRIBUTING.md](CONTRIBUTING.md): how to send a change
+- [SECURITY.md](SECURITY.md): how to report a vulnerability privately
 
 ## What it does
 
@@ -215,9 +217,9 @@ Backups are optional. JÁRN never needs one to patch a server, and you can use n
 source for each server in **Admin Settings → Backup → Server backup sources**. Two things need a source: a patch job
 that is set to back up first, and a distribution upgrade, which won't start without one.
 
-JÁRN only starts a backup when you click **Back up now**, or when a patch job or distribution upgrade asks for one.
-It never runs backups on a schedule. Any schedule you use, such as your own backup software or Proxmox's backup jobs,
-is separate from JÁRN.
+JÁRN only starts a server backup when you click **Back up now**, or when a patch job or distribution upgrade asks for
+one. It never schedules server backups. The only scheduled backup is the nightly off-host copy of JÁRN's own database
+and audit archives. Your own backup software or Proxmox's backup jobs are separate from JÁRN.
 
 ### File backups to a share (NFS)
 
@@ -315,3 +317,11 @@ covers events written since the hash chain was added. Earlier events are kept, b
 
 See [DEVELOPMENT.md](DEVELOPMENT.md). The production image doesn't include the test tools, so run the tests from the
 development setup.
+
+## Licence and support
+
+JÁRN is free software under the [Apache License 2.0](LICENSE). You can use, change and redistribute it, including in
+closed-source products, as long as you keep the licence and copyright notices.
+
+JÁRN is free to use. If it saves you time, you can support its development through
+[GitHub Sponsors](https://github.com/sponsors/janerik09). Donations are optional and don't unlock anything.
