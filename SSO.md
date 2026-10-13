@@ -1,115 +1,121 @@
 # Single sign-on
 
-JÁRN can sign users in with an identity provider instead of a local password. Supported:
+JÁRN can sign people in through an identity provider instead of a local password. It supports two kinds of provider:
 
-- **OpenID Connect**: Microsoft Entra ID, Okta, Google, Keycloak, and any provider that publishes OpenID Connect discovery
-- **Active Directory and LDAP**: users type their directory user name and password into JÁRN's sign-in form
+- **OpenID Connect:** Microsoft Entra ID, Okta, Google, Keycloak, and any provider that publishes OpenID Connect
+  discovery.
+- **Active Directory and LDAP:** people type their directory user name and password into JÁRN's sign-in form.
 
-Configure everything in **Admin Settings → Single sign-on**. Secrets (client secrets, the directory bind password) are
-stored encrypted and are never shown again after saving.
+Set everything up in **Admin Settings → Single sign-on**. Client secrets and the directory bind password are stored
+encrypted. Once saved, they're never shown again.
 
 ## How access works
 
-- A user's **role** comes from the groups the provider reports: viewer, operator or admin. If a user is in several mapped
-  groups, the highest role applies.
-- A user who matches no group is **refused**, unless you set a **default role** for the provider.
-- Each sign-in **replaces** the account's role with the one it earns, so a change of groups takes effect at the next sign-in.
-- SSO accounts have no JÁRN password. Multi-factor authentication is the provider's job: JÁRN's own authenticator-app
-  option does not apply to them.
-- Local accounts cannot be taken over by a provider. If a local account has the same name, the provider sign-in is refused.
+- A person's **role** comes from the groups the provider sends back: viewer, operator or admin. If someone belongs to
+  several mapped groups, they get the highest of those roles.
+- Someone who doesn't match any group is refused, unless you set a default role for that provider.
+- Every sign-in replaces the account's role with the role the person has at that moment. So a change of groups takes
+  effect at the next sign-in.
+- SSO accounts have no JÁRN password. Multi-factor authentication is the provider's job. JÁRN's own authenticator-app
+  option doesn't apply to these accounts.
+- A provider can't take over a local account. If a local account already has the same name, the provider sign-in is
+  refused.
 
-**Two things to know before you rely on it for offboarding:**
+**Two things to know before you rely on this for offboarding:**
 
-1. A removed group does not sign the user out. Their session keeps its role until it expires (up to seven days for the
-   refresh token). To remove access at once, **disable the account** in **Admin Settings → Users**. Disabling takes effect
-   at the next request.
-2. Directory membership is read only for groups the user is a direct member of. Nested groups are not expanded.
+1. Removing someone from a group doesn't sign them out. Their current session keeps its role until it expires, which
+   can be up to seven days for the refresh token. To cut access immediately, disable the account under
+   **Admin Settings → Users**. That takes effect on the next request.
+2. For Active Directory and LDAP, JÁRN only counts groups the user is a direct member of. Nested groups aren't expanded.
 
 ## Before you start
 
-1. Set **Public address of JÁRN** to the address people type in their browser, for example `https://jarn.example.com`.
-   Providers redirect back to it, so it must be reachable from the user's browser. Use HTTPS in production, so the session
-   cookie is marked secure.
-2. Note the **redirect address** shown on the same screen. Register it with each provider. It is always
+1. Set **Public address of JÁRN** to the address people type into their browser, for example
+   `https://jarn.example.com`. Providers send users back to that address, so it has to be reachable from the browser.
+   Use HTTPS in production. That also makes the session cookie secure.
+2. Copy the **redirect address** shown on the same screen, and register it with each provider. It's always
    `<public address>/api/v1/auth/sso/callback`.
-3. Keep a local administrator with a password. If the provider is down, that account is how you get in. Set
-   **Allow password sign-in for local accounts** to off only after you have tested sign-in with the provider.
+3. Keep at least one local administrator with a password. If your provider goes down, that's the account you use to
+   get in. Only turn off password sign-in for local accounts after you've tested sign-in with the provider.
 
-## Per provider
+Each provider has a preset. When you add one, the preset fills in the usual user name and group settings for you.
 
-Use the preset when you add an option. It fills in the usual username and group settings.
+## Microsoft Entra ID
 
-### Microsoft Entra ID
+1. In the Entra admin center, go to **App registrations → New registration**. Set the platform to **Web**, and enter
+   the redirect address as the redirect URI.
+2. Under **Certificates & secrets**, create a new client secret. Copy the value straight away, because Entra only
+   shows it once.
+3. Under **Token configuration**, add a groups claim and choose security groups. Entra sends group **object IDs**, not
+   names, so the mappings in JÁRN need the IDs. You'll find each group's ID on its Overview page.
+   - If someone belongs to more than about 200 groups, Entra leaves the list out, and JÁRN refuses the sign-in. To get
+     around that, limit which groups the application uses, or use app roles. For app roles, set the groups claim to
+     `roles` in JÁRN.
+4. In JÁRN, set the issuer to `https://login.microsoftonline.com/<tenant-id>/v2.0`. Enter the application (client) ID
+   and the secret. Use `preferred_username` as the username claim and `groups` as the groups claim.
 
-1. In the Entra admin center, **App registrations → New registration**. Redirect URI: type **Web**, value = the redirect
-   address above.
-2. **Certificates & secrets → New client secret**. Copy the secret value now; Entra shows it once.
-3. **Token configuration → Add groups claim**. Choose security groups. Entra sends group **object IDs**, so the group
-   mappings in JÁRN must be the group IDs (shown on each group's Overview page).
-   - If a user belongs to more than about 200 groups, Entra omits the list and JÁRN refuses the sign-in. Limit the groups
-     the application uses, or use app roles (set the groups claim to `roles` in JÁRN).
-4. In JÁRN: issuer `https://login.microsoftonline.com/<tenant-id>/v2.0`, client id = the application (client) ID, the secret,
-   username claim `preferred_username`, groups claim `groups`.
+## Okta
 
-### Okta
+1. Under **Applications**, create an App Integration with OIDC and choose **Web application**. The sign-in redirect URI
+   is the redirect address. Note the client ID and secret.
+2. Under **Security → API → Authorization Servers → default → Claims**, add a claim named `groups`. Include it in the
+   ID token, use the Groups value type, and set a filter that matches the groups JÁRN should see.
+3. In JÁRN, set the issuer to `https://<your-domain>/oauth2/default`. Use `email` as the username claim, because
+   Okta's `preferred_username` is the email address. Use `groups` as the groups claim.
 
-1. **Applications → Create App Integration → OIDC → Web application**. Sign-in redirect URI = the redirect address above.
-   Note the client ID and secret.
-2. **Security → API → Authorization Servers → default → Claims → Add Claim**: name `groups`, include in ID token, value type
-   Groups, filter that matches the groups JÁRN should see.
-3. In JÁRN: issuer `https://<your-domain>/oauth2/default` (the authorisation server issuer), username claim `email` (Okta's
-   `preferred_username` is the email address), groups claim `groups`.
+## Google
 
-### Google
+1. In the Google Cloud Console, set up the OAuth consent screen. Then create an OAuth client ID of type **Web
+   application**, and add the redirect address as an authorised redirect URI.
+2. In JÁRN, set the issuer to `https://accounts.google.com`. Use `email` as the username claim, and **leave the groups
+   claim empty**. Google doesn't send group memberships in the sign-in token.
+3. Grant access with the **Allowed email addresses** list, and set a default role for those addresses. Be careful
+   here: without a list, any Google account could sign in with the default role. Don't set a default role for Google
+   without also listing the addresses.
 
-1. Google Cloud Console → **APIs & Services → OAuth consent screen**, then **Credentials → Create credentials → OAuth client
-   ID → Web application**. Authorised redirect URI = the redirect address above.
-2. In JÁRN: issuer `https://accounts.google.com`, username claim `email`, and **leave the groups claim empty**. Google does not
-   send group memberships in the sign-in token.
-3. Grant access by listing **Allowed email addresses**, and set a default role for them. Without an allow-list, every Google
-   account on the internet could sign in with the default role, so do not leave the default set without a list.
+## Keycloak
 
-### Keycloak
+1. In your realm, create a client with OpenID Connect. Turn on client authentication (so it's confidential) and the
+   standard flow. Add the redirect address as a valid redirect URI.
+2. On the client, open the dedicated client scope, go to Mappers, and add a **Group Membership** mapper. Set the token
+   claim name to `groups`, leave full group path off, and add the claim to the ID token.
+3. In JÁRN, set the issuer to `https://<host>/realms/<realm>`. Use `preferred_username` as the username claim and
+   `groups` as the groups claim. Keycloak group names are the keys in the group mapping.
 
-1. In the realm, **Clients → Create client**: OpenID Connect, client authentication on (confidential), standard flow on.
-   Valid redirect URI = the redirect address above.
-2. On the client, **Client scopes → dedicated scope → Mappers → Add mapper → Group Membership**: token claim name `groups`,
-   full group path off, add to ID token on.
-3. In JÁRN: issuer `https://<host>/realms/<realm>`, username claim `preferred_username`, groups claim `groups`.
-   Keycloak group names are used as the mapping keys.
+## Any other OpenID Connect provider
 
-### Any other OpenID Connect provider
-
-Choose **OpenID Connect**. Enter the issuer (the address that serves `/.well-known/openid-configuration`), the client
-ID and secret, and the claim names for the user name and groups. Use **Test provider** to check the discovery document and
-signing keys before you enable it.
+Choose **OpenID Connect**. Enter the issuer, which is the address that serves
+`/.well-known/openid-configuration`, along with the client ID and secret. Then set the claim names for the user name
+and the groups. Press **Test provider** before you turn it on. It checks the discovery document and the signing keys.
 
 ## Active Directory and LDAP
 
-1. Create a **read-only service account** for JÁRN. Give it read access to user and group objects in the search base. Nothing else.
-2. In JÁRN, turn on **Use the directory for sign-in**:
-   - Server: the domain controller name, and LDAPS on port 636 (recommended). STARTTLS on 389 is supported too.
-   - Keep **Verify the server certificate** on. The domain controller's CA must be trusted by the JÁRN host. For a lab only,
-     you can turn verification off.
-   - Service account DN and password.
-   - Search base, for example `OU=Staff,DC=example,DC=com`.
-   - Active Directory defaults are filled in: user filter on `sAMAccountName`, group attribute `memberOf`.
-     For OpenLDAP, use `uid` and set **Group search base**, since OpenLDAP has no `memberOf` by default.
+1. Create a read-only service account for JÁRN. It needs to read user and group objects in the search base, and nothing
+   more.
+2. In JÁRN, turn on **Use the directory for sign-in**, and fill in the connection settings:
+   - **Server:** the domain controller's name. Use LDAPS on port 636 if you can. STARTTLS on port 389 also works.
+   - **Verify the server certificate:** keep this on. The domain controller's certificate authority must be trusted by
+     the JÁRN host. Turn verification off only in a lab.
+   - **Service account:** its bind DN and password.
+   - **Search base**, for example `OU=Staff,DC=example,DC=com`.
+   - The defaults are set for Active Directory: the user filter matches `sAMAccountName`, and the group attribute is
+     `memberOf`. OpenLDAP doesn't have `memberOf` by default, so use `uid` for the username and set a **group search
+     base**.
 3. Map groups by their full DN, for example `CN=JARN-Admins,OU=Groups,DC=example,DC=com`. A bare CN also works.
-4. Use **Test user lookup** with a real user name. It shows the user's DN, groups and the role that would be granted.
-   It never asks for or checks a password.
+4. Use **Test user lookup** with a real user name. It shows the person's DN, their groups, and the role a sign-in would
+   give them. It never asks for or checks a password.
 
-Users sign in on JÁRN's own form with their directory password. JÁRN checks it against the directory by binding as the
-user, and never stores it. A user whose password is wrong, or who is not in a mapped group, cannot sign in.
+People sign in on JÁRN's own form with their directory password. JÁRN checks it by binding as that user, and it never
+stores the password. A wrong password fails, and so does anyone who isn't in a mapped group.
 
 ## Testing sign-in
 
-1. Enable one provider, and keep local sign-in on.
-2. Sign out, and use **Sign in with <provider>** with a test account in a mapped group.
-3. Check the account appears in **Admin Settings → Users** with the expected role and that **Audit Logs** shows
-   `auth.sso.login` as a success.
-4. Try a user with no mapped group. The sign-in must be refused with an explanation.
-5. Only then turn off local sign-in, if you want to.
+1. Turn on one provider, and leave local sign-in on.
+2. Sign out, and use **Sign in with <provider>** with a test account that's in a mapped group.
+3. Check that the account appears under **Admin Settings → Users** with the role you expected. Then check that
+   **Audit Logs** shows an `auth.sso.login` success.
+4. Try an account with no mapped group. The sign-in should be refused, with an explanation.
+5. Only then decide whether to turn off password sign-in for local accounts.
 
-Failed sign-ins, replayed or forged sign-in responses, and refused provider logins are recorded in the audit trail as
-`auth.sso.login` failures.
+Failed sign-ins, replayed or forged sign-in responses, and refused provider logins are all recorded in the audit trail
+as `auth.sso.login` failures.
