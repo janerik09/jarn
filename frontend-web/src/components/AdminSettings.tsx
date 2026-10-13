@@ -1249,6 +1249,18 @@ function HostKeysSection() {
   )
 }
 
+function SettingsStep({ n, title, children }: { n: number; title: string; children: ReactNode }) {
+  return (
+    <div className="settings-step">
+      <div className="settings-step-head">
+        <span className="settings-step-num">{n}</span>
+        <h3>{title}</h3>
+      </div>
+      {children}
+    </div>
+  )
+}
+
 interface OffsiteForm {
   enabled: boolean
   host: string
@@ -1375,38 +1387,51 @@ function OffsiteSection() {
 
   return (
     <div>
-      <div className="settings-card">
-        <h3>Destination</h3>
-        <label className="settings-toggle">
+      <div className="settings-status-bar">
+        <span className={`status-pill ${form.enabled ? 'on' : 'off'}`}>{form.enabled ? 'On' : 'Off'}</span>
+        <span className="settings-help">{form.enabled ? 'Runs daily at 03:30 UTC' : 'Not running'}</span>
+        <span className="settings-help">
+          Server key: {view.host_key_fingerprint ? <code>{view.host_key_fingerprint}</code> : 'not approved yet'}
+        </span>
+        <span className="settings-help">
+          Last run: {view.last_run
+            ? `${new Date(view.last_run.at).toLocaleString()}, ${view.last_run.ok ? 'succeeded' : 'failed'} (${view.last_run.summary})`
+            : 'none yet'}
+        </span>
+      </div>
+
+      <SettingsStep n={1} title="Destination">
+        <label className="settings-toggle" style={{ marginBottom: 14 }}>
           <input type="checkbox" checked={form.enabled} onChange={(e) => set('enabled', e.target.checked)} />
           Copy backups off this host every day
         </label>
-        <div className="settings-field">
-          <label>Server (host name or IP)</label>
-          <input type="text" value={form.host} onChange={(e) => set('host', e.target.value)} placeholder="nas.example.com" />
-        </div>
         <div className="settings-row">
+          <div className="settings-field">
+            <label>Server (host name or IP)</label>
+            <input type="text" value={form.host} onChange={(e) => set('host', e.target.value)} placeholder="nas.example.com" />
+          </div>
           <div className="settings-field">
             <label>SSH port</label>
             <input type="number" value={form.port} onChange={(e) => set('port', Number(e.target.value))} />
           </div>
+        </div>
+        <div className="settings-row">
           <div className="settings-field">
             <label>Username</label>
             <input type="text" value={form.username} onChange={(e) => set('username', e.target.value)} />
           </div>
-        </div>
-        <div className="settings-field">
-          <label>Remote folder</label>
-          <input type="text" value={form.remote_dir} onChange={(e) => set('remote_dir', e.target.value)} placeholder="/volume1/jarn-backups" />
+          <div className="settings-field">
+            <label>Remote folder</label>
+            <input type="text" value={form.remote_dir} onChange={(e) => set('remote_dir', e.target.value)} placeholder="/volume1/jarn-backups" />
+          </div>
         </div>
         <div className="settings-field">
           <label>Copies to keep on the remote server (per kind)</label>
           <input type="number" min={1} max={365} value={form.keep_copies} onChange={(e) => set('keep_copies', Number(e.target.value))} />
         </div>
-      </div>
+      </SettingsStep>
 
-      <div className="settings-card">
-        <h3>Sign-in</h3>
+      <SettingsStep n={2} title="Sign-in">
         <div className="settings-field">
           <label>Method</label>
           <select value={form.auth} onChange={(e) => set('auth', e.target.value as 'key' | 'password')} className="form-input">
@@ -1431,94 +1456,83 @@ function OffsiteSection() {
           Keys and passwords are stored encrypted and are not shown again. Use an account that can only write to the
           remote folder.
         </p>
-      </div>
+      </SettingsStep>
 
-      <div className="settings-card">
-        <h3>Server identity</h3>
-        <p className="settings-help">
+      <SettingsStep n={3} title="Verify the server">
+        <p className="settings-help" style={{ marginBottom: 12 }}>
           Test the connection first. It shows the server's SSH host key fingerprint. Compare it with the fingerprint
           printed by the NAS or server itself, then approve it. Copies are only sent to a server whose key was approved.
         </p>
-        <p className="settings-help">
-          Approved key: {form.host_key ? (view.host_key_fingerprint ?? 'set') : 'none yet'}
-        </p>
         {tested && (
-          <p className="settings-help">
-            Server presents: <code>{tested.fingerprint}</code> {tested.pinned ? '(approved)' : '(not approved yet)'}
+          <p className="settings-help" style={{ marginBottom: 12 }}>
+            Server presents <code>{tested.fingerprint}</code> {tested.pinned ? '(approved)' : '(not approved yet)'}
           </p>
         )}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="settings-toolbar">
           <button className="btn-test" onClick={test} disabled={busy || !form.host || !form.username || !form.remote_dir}>Test connection</button>
           <button className="btn-edit" onClick={approveKey} disabled={busy || !tested || tested.pinned}>Approve this server key</button>
         </div>
-      </div>
+      </SettingsStep>
 
-      <div className="settings-card">
-        <h3>Waiver</h3>
-        <p className="settings-help">
-          Without an off-host copy, backups exist only on this server. You can accept that risk here, with a reason.
-          The dashboard keeps showing the warning, and the alert stays open, until a copy is turned on.
-        </p>
-        {view.waiver ? (
-          <>
-            <p className="settings-help">
-              Accepted by {view.waiver.by} on {new Date(view.waiver.at).toLocaleDateString()}: {view.waiver.reason}
-            </p>
-            <button className="btn-cancel" disabled={busy} onClick={async () => {
-              setBusy(true)
-              try {
-                await fetch('/api/v1/admin/offsite/waiver', { method: 'DELETE' })
-                await load()
-              } finally {
-                setBusy(false)
-              }
-            }}>Remove waiver</button>
-          </>
-        ) : (
-          <>
-            <div className="settings-field">
-              <label>Reason (required)</label>
-              <input type="text" value={waiverReason} onChange={(e) => setWaiverReason(e.target.value)}
-                placeholder="e.g. Test lab; backups are rebuilt from source" />
-            </div>
-            <button className="btn-save-settings" disabled={busy || waiverReason.trim().length < 5} onClick={async () => {
-              setBusy(true)
-              setMessage(null)
-              try {
-                const res = await fetch('/api/v1/admin/offsite/waiver', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ reason: waiverReason.trim() }),
-                })
-                const data = await res.json()
-                if (!res.ok) setMessage({ ok: false, text: data.detail || 'Could not record the waiver' })
-                else { setWaiverReason(''); applyView(data) }
-              } finally {
-                setBusy(false)
-              }
-            }}>Record waiver</button>
-          </>
-        )}
-      </div>
+      {(!form.enabled || view.waiver) && (
+        <SettingsStep n={4} title="Without a copy">
+          <p className="settings-help" style={{ marginBottom: 12 }}>
+            Without an off-host copy, backups exist only on this server. You can accept that risk here, with a reason.
+            The dashboard keeps showing the warning, and the alert stays open, until a copy is turned on.
+          </p>
+          {view.waiver ? (
+            <>
+              <p className="settings-help" style={{ marginBottom: 12 }}>
+                Accepted by {view.waiver.by} on {new Date(view.waiver.at).toLocaleDateString()}: {view.waiver.reason}
+              </p>
+              <button className="btn-cancel" disabled={busy} onClick={async () => {
+                setBusy(true)
+                try {
+                  await fetch('/api/v1/admin/offsite/waiver', { method: 'DELETE' })
+                  await load()
+                } finally {
+                  setBusy(false)
+                }
+              }}>Remove waiver</button>
+            </>
+          ) : (
+            <>
+              <div className="settings-field">
+                <label>Reason (required)</label>
+                <input type="text" value={waiverReason} onChange={(e) => setWaiverReason(e.target.value)}
+                  placeholder="e.g. Test lab; backups are rebuilt from source" />
+              </div>
+              <button className="btn-save-settings" disabled={busy || waiverReason.trim().length < 5} onClick={async () => {
+                setBusy(true)
+                setMessage(null)
+                try {
+                  const res = await fetch('/api/v1/admin/offsite/waiver', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: waiverReason.trim() }),
+                  })
+                  const data = await res.json()
+                  if (!res.ok) setMessage({ ok: false, text: data.detail || 'Could not record the waiver' })
+                  else { setWaiverReason(''); applyView(data) }
+                } finally {
+                  setBusy(false)
+                }
+              }}>Record waiver</button>
+            </>
+          )}
+        </SettingsStep>
+      )}
 
-      <div className="settings-card">
-        <h3>Status</h3>
-        <p className="settings-help">
-          {view.last_run
-            ? `Last run ${new Date(view.last_run.at).toLocaleString()}: ${view.last_run.ok ? 'succeeded' : 'failed'} (${view.last_run.summary})`
-            : 'No run yet'}
-        </p>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn-save-settings" onClick={save} disabled={busy || (form.enabled && !form.host_key)}>Save</button>
-          <button className="btn-edit" onClick={runNow} disabled={busy || !view.enabled}>Copy now</button>
-        </div>
+      <div className="settings-action-bar">
+        <button className="btn-save-settings" onClick={save} disabled={busy || (form.enabled && !form.host_key)}>Save off-host copy</button>
+        <button className="btn-edit" onClick={runNow} disabled={busy || !view.enabled}>Copy now</button>
         {form.enabled && !form.host_key && (
-          <p className="settings-help">Test the connection and approve the server key before saving with the copy turned on.</p>
+          <span className="settings-help">Test the connection and approve the server key before saving with the copy turned on.</span>
         )}
       </div>
 
       {message && (
-        <p className="settings-help" style={{ color: message.ok ? 'var(--success)' : 'var(--error)' }}>{message.text}</p>
+        <p className="settings-help" style={{ color: message.ok ? 'var(--success)' : 'var(--error)', marginTop: 12 }}>{message.text}</p>
       )}
     </div>
   )
@@ -1729,132 +1743,146 @@ function BackupSection({ settings, update }: { settings: Settings; update: Updat
     }
   }
 
+  const renderProxmox = (t: BackupTarget) => (
+    <div key={t.id} className="settings-card">
+      <div className="settings-card-head">
+        <h3><span className="target-type">Proxmox VE</span> {t.name}</h3>
+        <button onClick={() => removeTarget(t.id)}>Remove</button>
+      </div>
+      <div className="settings-row">
+        <div className="settings-field">
+          <label>Name</label>
+          <input type="text" value={t.name} onChange={(e) => patchTarget(t.id, { name: e.target.value })} />
+        </div>
+        <div className="settings-field">
+          <label>Fallback storage (optional)</label>
+          <input type="text" placeholder="Leave empty to use each VM's Datacenter backup job" value={t.storage || ''} onChange={(e) => patchTarget(t.id, { storage: e.target.value })} />
+        </div>
+      </div>
+      <div className="settings-field">
+        <label>API URL</label>
+        <input type="text" placeholder="https://pve1.example.com:8006" value={t.api_url || ''} onChange={(e) => patchTarget(t.id, { api_url: e.target.value })} />
+      </div>
+      <div className="settings-row">
+        <div className="settings-field">
+          <label>API token ID</label>
+          <input type="text" placeholder="backup@pve!patchmanager" value={t.token_id || ''} onChange={(e) => patchTarget(t.id, { token_id: e.target.value })} />
+        </div>
+        <div className="settings-field">
+          <label>API token secret</label>
+          <input
+            type="password"
+            placeholder={t.token_secret_set ? 'Stored; leave blank to keep' : 'Paste token secret'}
+            value={t.token_secret || ''}
+            onChange={(e) => patchTarget(t.id, { token_secret: e.target.value })}
+          />
+        </div>
+      </div>
+      <label className="settings-toggle">
+        <input type="checkbox" checked={t.verify_tls} onChange={(e) => patchTarget(t.id, { verify_tls: e.target.checked })} />
+        <span>Verify TLS certificate</span>
+      </label>
+    </div>
+  )
+
+  const renderFiles = (t: BackupTarget) => (
+    <div key={t.id} className="settings-card">
+      <div className="settings-card-head">
+        <h3><span className="target-type">File backup</span> {t.name}</h3>
+        <button onClick={() => removeTarget(t.id)}>Remove</button>
+      </div>
+      <div className="settings-row">
+        <div className="settings-field">
+          <label>Name</label>
+          <input type="text" value={t.name} onChange={(e) => patchTarget(t.id, { name: e.target.value })} />
+        </div>
+        <div className="settings-field">
+          <label>Backup folder on this host</label>
+          <input type="text" placeholder="/mnt/jarn-backups" value={t.base_path || ''} onChange={(e) => patchTarget(t.id, { base_path: e.target.value })} />
+        </div>
+      </div>
+      <div className="settings-row">
+        <div className="settings-field">
+          <label>Backups kept per server</label>
+          <input type="number" min={1} max={365} value={t.keep ?? 5} onChange={(e) => patchTarget(t.id, { keep: Number(e.target.value) })} />
+        </div>
+        <div className="settings-field">
+          <label className="settings-toggle">
+            <input type="checkbox" checked={t.require_mount ?? true} onChange={(e) => patchTarget(t.id, { require_mount: e.target.checked })} />
+            <span>Require the folder to be a mounted share</span>
+          </label>
+        </div>
+      </div>
+      <div className="settings-field">
+        <label>Paths to back up on each server (one per line)</label>
+        <textarea
+          rows={5}
+          placeholder={'/etc\n/root\n/home'}
+          value={(t.paths || []).join('\n')}
+          onChange={(e) => patchTarget(t.id, { paths: e.target.value.split('\n') })}
+        />
+        <p className="settings-help">Leave empty for the defaults: /etc, /boot, /root, /home, /srv, /opt and /usr/local.</p>
+      </div>
+      <p className="settings-help">
+        Files are copied over SSH into this folder. Mount an NFS export at that path on this host. With the mount check
+        on, a backup stops rather than filling this host's disk when the share is missing. Backups contain password
+        hashes and private keys, so only export the share to this host. A restore puts back only these paths, not
+        packages or the kernel.
+      </p>
+    </div>
+  )
+
   return (
     <>
-      <div className="settings-field">
+      <div className="settings-status-bar">
         <label className="settings-toggle">
           <input type="checkbox" checked={b.enabled} onChange={(e) => update({ backup: { ...b, enabled: e.target.checked } })} />
           <span>Enable backups</span>
         </label>
+        <span className="settings-help">Backups run only when you start them or a patch job asks for one.</span>
       </div>
 
+      <div className="settings-choice-grid">
+        <div className="settings-choice">
+          <h4>File backups</h4>
+          <p>Copies chosen paths from any Linux server over SSH into a folder on this host, normally an NFS share. Use this for servers with no backup solution.</p>
+          <button onClick={addFileTarget}>+ Add file backup target</button>
+        </div>
+        <div className="settings-choice">
+          <h4>Proxmox VE</h4>
+          <p>Backs up whole VMs and containers through the Proxmox API, using each guest's Datacenter backup job. Use this for Proxmox guests.</p>
+          <button onClick={addTarget}>+ Add Proxmox server</button>
+        </div>
+      </div>
+
+      <h3 className="settings-subhead">Backup targets</h3>
       {b.targets.length === 0 && (
-        <p className="settings-help">No backup targets yet. Add a Proxmox VE server for VMs it runs, or a file target for servers that have no backup solution.</p>
+        <p className="settings-help">No backup targets yet. Add one of the two kinds above.</p>
       )}
+      {b.targets.map(t => (t.provider === 'nfs' ? renderFiles(t) : renderProxmox(t)))}
 
-      {b.targets.filter(t => t.provider !== 'nfs').map(t => (
-        <div key={t.id} className="settings-card">
-          <div className="settings-row">
-            <div className="settings-field">
-              <label>Name</label>
-              <input type="text" value={t.name} onChange={(e) => patchTarget(t.id, { name: e.target.value })} />
-            </div>
-            <div className="settings-field">
-              <label>Fallback storage (optional)</label>
-              <input type="text" placeholder="Leave empty to use each VM's Datacenter backup job" value={t.storage || ''} onChange={(e) => patchTarget(t.id, { storage: e.target.value })} />
-            </div>
-          </div>
-          <div className="settings-field">
-            <label>API URL</label>
-            <input type="text" placeholder="https://pve1.example.com:8006" value={t.api_url || ''} onChange={(e) => patchTarget(t.id, { api_url: e.target.value })} />
-          </div>
-          <div className="settings-row">
-            <div className="settings-field">
-              <label>API token ID</label>
-              <input type="text" placeholder="backup@pve!patchmanager" value={t.token_id || ''} onChange={(e) => patchTarget(t.id, { token_id: e.target.value })} />
-            </div>
-            <div className="settings-field">
-              <label>API token secret</label>
-              <input
-                type="password"
-                placeholder={t.token_secret_set ? 'Stored; leave blank to keep' : 'Paste token secret'}
-                value={t.token_secret || ''}
-                onChange={(e) => patchTarget(t.id, { token_secret: e.target.value })}
-              />
-            </div>
-          </div>
-          <div className="settings-row">
-            <div className="settings-field">
-              <label className="settings-toggle">
-                <input type="checkbox" checked={t.verify_tls} onChange={(e) => patchTarget(t.id, { verify_tls: e.target.checked })} />
-                <span>Verify TLS certificate</span>
-              </label>
-            </div>
-            <div className="settings-field">
-              <button onClick={() => removeTarget(t.id)}>Remove this Proxmox server</button>
-            </div>
-          </div>
+      {b.targets.length > 0 && (
+        <div className="settings-toolbar">
+          <button className="btn-test" onClick={test} disabled={testing}>
+            {testing ? 'Testing…' : 'Test all connections'}
+          </button>
+          <span className="settings-help">Save settings before testing. Tests use the saved values.</span>
         </div>
+      )}
+      {testError && <p className="settings-help" style={{ color: '#c8514c' }}>{testError}</p>}
+      {testResults && testResults.map((r: any) => (
+        <p key={r.target} className="settings-help" style={{ color: r.ok ? '#3a9d6e' : '#c8514c' }}>
+          {r.name}: {r.ok
+            ? (r.provider === 'nfs'
+              ? `folder ${r.base_path} is writable`
+              : (r.storage ? `connected to Proxmox VE ${r.pve_version}; storage '${r.storage}' accepts backups` : `connected to Proxmox VE ${r.pve_version}; storage taken from each VM's backup job`))
+            : r.message}
+        </p>
       ))}
-
-      {b.targets.filter(t => t.provider === 'nfs').map(t => (
-        <div key={t.id} className="settings-card">
-          <div className="settings-row">
-            <div className="settings-field">
-              <label>Name</label>
-              <input type="text" value={t.name} onChange={(e) => patchTarget(t.id, { name: e.target.value })} />
-            </div>
-            <div className="settings-field">
-              <label>Backup folder on this host</label>
-              <input type="text" placeholder="/mnt/jarn-backups" value={t.base_path || ''} onChange={(e) => patchTarget(t.id, { base_path: e.target.value })} />
-            </div>
-          </div>
-          <div className="settings-row">
-            <div className="settings-field">
-              <label>Backups kept per server</label>
-              <input type="number" min={1} max={365} value={t.keep ?? 5} onChange={(e) => patchTarget(t.id, { keep: Number(e.target.value) })} />
-            </div>
-            <div className="settings-field">
-              <label className="settings-toggle">
-                <input type="checkbox" checked={t.require_mount ?? true} onChange={(e) => patchTarget(t.id, { require_mount: e.target.checked })} />
-                <span>Require the folder to be a mounted share</span>
-              </label>
-            </div>
-          </div>
-          <div className="settings-field">
-            <label>Paths to back up on each server (one per line)</label>
-            <textarea
-              rows={5}
-              placeholder={'/etc\n/root\n/home'}
-              value={(t.paths || []).join('\n')}
-              onChange={(e) => patchTarget(t.id, { paths: e.target.value.split('\n') })}
-            />
-          </div>
-          <p className="settings-help">
-            Each server's files are copied over SSH into this folder. Mount an NFS export at that path on this host; with the
-            mount check on, a backup stops instead of filling this host's disk when the share is missing. Backups contain
-            password hashes and private keys, so only export the share to this host. Leave the paths empty to use the
-            defaults: /etc, /boot, /root, /home, /srv, /opt and /usr/local. Restores put back only these paths, not packages
-            or the kernel.
-          </p>
-          <div className="settings-field">
-            <button onClick={() => removeTarget(t.id)}>Remove this file target</button>
-          </div>
-        </div>
-      ))}
-
-      <div className="settings-field">
-        <button onClick={addTarget}>+ Add Proxmox server</button>
-        <button onClick={addFileTarget} style={{ marginLeft: 8 }}>+ Add file backup target (NFS share)</button>
-        <button className="btn-save-settings" onClick={test} disabled={testing || b.targets.length === 0} style={{ marginLeft: 8 }}>
-          {testing ? 'Testing…' : 'Test all connections'}
-        </button>
-        {testError && <p className="settings-help" style={{ color: '#c8514c' }}>{testError}</p>}
-        {testResults && testResults.map((r: any) => (
-          <p key={r.target} className="settings-help" style={{ color: r.ok ? '#3a9d6e' : '#c8514c' }}>
-            {r.name}: {r.ok
-              ? (r.provider === 'nfs'
-                ? `folder ${r.base_path} is writable`
-                : (r.storage ? `connected to Proxmox VE ${r.pve_version}; storage '${r.storage}' accepts backups` : `connected to Proxmox VE ${r.pve_version}; storage taken from each VM's backup job`))
-              : r.message}
-          </p>
-        ))}
-        <p className="settings-help">Save settings before testing. Tests use the saved values.</p>
-      </div>
 
       <h3 className="settings-subhead">Server backup sources</h3>
-      <p className="settings-help">
-        Each server is backed up either from the Proxmox VM or container it runs on, or as files to a file target. Pick one below.
+      <p className="settings-help" style={{ marginBottom: 12 }}>
+        Choose where each server is backed up from: its file backup target, or the Proxmox guest it runs as.
       </p>
       <BackupMappings />
     </>
