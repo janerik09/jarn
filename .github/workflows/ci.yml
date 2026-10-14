@@ -34,7 +34,7 @@ jobs:
       REDIS_URL: redis://localhost:6379/0
       SECRET_KEY: ci-only-secret-key-that-is-long-enough-1234567890
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -60,7 +60,7 @@ jobs:
       run:
         working-directory: frontend-web
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -80,7 +80,7 @@ jobs:
       # Trivy runs from its own image, pinned by digest, so no third-party action is needed
       TRIVY: docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.58.1@sha256:ab70a02200597efa04748f210f793936eb647cbcdb0ea69cc30b226d6f5a22c7
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build backend image
         run: docker build -t jarn-backend:ci backend
       - name: Build web image
@@ -104,7 +104,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Scan the full git history
